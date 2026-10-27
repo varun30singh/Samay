@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Institution {
+  id                String        @id @default(uuid())
+  aictePermanentId  String        @unique
+  name              String
+  region            String
+  state             String
+  address           String?
+  contactEmail      String?
+  contactPhone      String?
+  principalName     String?
+  applications      Application[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model Application {
+  id                 String             @id
+  applicationNumber  String
+  institutionId      String
+  institutionName    String
+  aictePermanentId   String
+  region             String
+  state              String
+  type               String
+  route              String
+  routeVersion       String             @default("APH-2026.v1.0")
+  currentStage       String
+  submissionDate     DateTime
+  approvedIntake     Int
+  assignedOfficer    String
+  supervisor         String
+  riskStatus         String             @default("On track")
+  delayRiskScore     Int                @default(15)
+  latestSafeDate     DateTime?
+  daysRemaining      Int                @default(30)
+  workingDaysLeft    Int?
+  complianceScore    Int                @default(85)
+  institution        Institution        @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  documents          Document[]
+  undertakings       Undertaking[]
+  deficiencies       Deficiency[]
+  readinessChecks    ReadinessCheck[]
+  delegations        OfficerDelegation[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model Document {
+  id                String       @id @default(uuid())
+  applicationId     String
+  type              String
+  filename          String
+  fileSize          String
+  uploadDate        DateTime     @default(now())
+  expiryDate        DateTime?
+  validityStatus    String       @default("Valid")
+  officerConfirmed  Boolean      @default(true)
+  application       Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+model Undertaking {
+  id                String       @id @default(uuid())
+  applicationId     String
+  conditionClause   String
+  dueDate           DateTime
+  requiredEvidence  String
+  status            String       @default("Pending")
+  submittedAt       DateTime?
+  evidenceFileName  String?
+  application       Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+// FEATURE 1: WORKING-DAYS CALENDAR
+model WorkingCalendar {
+  id                           String     @id @default(uuid())
+  version                      String     @unique
+  academicYear                 String
+  weeklyOffSunday              Boolean    @default(true)
+  weeklyOffSecondFourthSaturday Boolean   @default(true)
+  weeklyOffAllSaturdays        Boolean    @default(false)
+  updatedBy                    String
+  lastUpdated                  DateTime   @default(now())
+  holidays                     Holiday[]
+}
+
+model Holiday {
+  id          String           @id @default(uuid())
+  calendarId  String
+  date        String           // YYYY-MM-DD
+  name        String
+  calendar    WorkingCalendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+}
+
+// FEATURE 2: PRE-SUBMISSION READINESS CHECKER
+model ReadinessCheck {
+  id             String       @id @default(uuid())
+  applicationId  String
+  institutionName String
+  overallStatus  String       // 'PASS' | 'WARNING' | 'FAIL'
+  scorePercent   Int
+  totalChecks    Int
+  passedChecks   Int
+  warningChecks  Int
+  failedChecks   Int
+  checklistJson  String       // Stored JSON of all check item results & plain-language fixes
+  submittedAnyway Boolean     @default(false)
+  checkedAt      DateTime     @default(now())
+  application    Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+// FEATURE 3: OFFICER DELEGATION AND LEAVE
+model OfficerLeave {
+  id             String              @id @default(uuid())
+  officerName    String
+  officerRole    String
+  region         String
+  startDate      DateTime
+  endDate        DateTime
+  reason         String
+  delegateName   String
+  status         String              @default("ACTIVE") // 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
+  createdAt      DateTime            @default(now())
+  delegations    OfficerDelegation[]
+}
+
+model OfficerDelegation {
+  id             String       @id @default(uuid())
+  leaveId        String
+  applicationId  String
+  fromOfficer    String
+  toDelegate     String
+  assignedStage  String
+  status         String       @default("ACTIVE") // 'ACTIVE' | 'RETURNED'
+  delegatedAt    DateTime     @default(now())
+  returnedAt     DateTime?
+  leave          OfficerLeave @relation(fields: [leaveId], references: [id], onDelete: Cascade)
+  application    Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+// FEATURE 4: DEFICIENCY CLOSURE TRACKER
+model Deficiency {
+  id               String               @id @default(uuid())
+  applicationId    String
+  institutionName  String
+  region           String
+  description      String
+  severity         String               // 'minor' | 'major'
+  dueDate          DateTime
+  evidenceRequired String
+  status           String               @default("Open") // 'Open' | 'Institution responded' | 'Under verification' | 'Accepted' | 'Query Raised' | 'Rejected' | 'Sent to hearing' | 'Hearing outcome recorded' | 'Closed'
+  hearingDate      DateTime?
+  hearingOutcome   String?
+  recordedBy       String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  application      Application          @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  timeline         DeficiencyTimeline[]
+}
+
+model DeficiencyTimeline {
+  id            String      @id @default(uuid())
+  deficiencyId  String
+  timestamp     DateTime    @default(now())
+  actor         String
+  actorRole     String
+  action        String
+  remarks       String?
+  evidenceName  String?
+  deficiency    Deficiency  @relation(fields: [deficiencyId], references: [id], onDelete: Cascade)
+}
+
+// AUDIT TRAIL
+model AuditBlock {
+  id           String   @id @default(uuid())
+  blockIndex   Int      @unique
+  timestamp    DateTime @default(now())
+  actor        String
+  actorRole    String
+  action       String
+  objectType   String
+  objectId     String
+  details      String
+  previousHash String
+  hash         String
+}
