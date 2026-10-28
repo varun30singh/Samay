@@ -23,8 +23,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${notoSans.variable} antialiased`}>
-      <body className="min-h-screen bg-white dark:bg-[#0B1B3A] text-[#082015] dark:text-[#FFFFFF] font-sans flex flex-col selection:bg-emerald-100 selection:text-emerald-900 dark:selection:bg-orange-900 dark:selection:text-amber-100 transition-colors duration-200">
+    <html lang="en" className={`${notoSans.variable} antialiased`} suppressHydrationWarning>
+      <body className="min-h-screen bg-white dark:bg-[#0B1B3A] text-[#082015] dark:text-[#FFFFFF] font-sans flex flex-col selection:bg-emerald-100 selection:text-emerald-900 dark:selection:bg-orange-900 dark:selection:text-amber-100 transition-colors duration-200" suppressHydrationWarning>
         {children}
       </body>
     </html>

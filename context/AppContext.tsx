@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useSyncExternalStore, ReactNode } from 'react';
 import {
   Application,
   UserRole,
@@ -57,6 +57,7 @@ interface AppContextType {
   theme: 'light' | 'dark';
   isAuthenticated: boolean;
   currentUser: CurrentUser | null;
+  isHydrated: boolean;
 
   // Feature 1: Working-Days Calendar
   workingCalendar: WorkingCalendarConfig;
@@ -127,6 +128,93 @@ interface AppContextType {
   updateCutoffDate: (newDate: string) => void;
 }
 
+let authListeners: Array<() => void> = [];
+let cachedAuthRaw: string | null = null;
+let cachedAuth: CurrentUser | null = null;
+
+const authStore = {
+  subscribe(listener: () => void) {
+    authListeners.push(listener);
+    return () => {
+      authListeners = authListeners.filter(l => l !== listener);
+    };
+  },
+  getSnapshot(): CurrentUser | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('samay_auth');
+      if (raw !== cachedAuthRaw) {
+        cachedAuthRaw = raw;
+        cachedAuth = raw ? JSON.parse(raw) : null;
+      }
+      return cachedAuth;
+    } catch {
+      return null;
+    }
+  },
+  getServerSnapshot(): CurrentUser | null {
+    return null;
+  },
+  setAuth(user: CurrentUser | null) {
+    try {
+      if (user) {
+        localStorage.setItem('samay_auth', JSON.stringify(user));
+      } else {
+        localStorage.removeItem('samay_auth');
+      }
+    } catch {}
+    cachedAuthRaw = user ? JSON.stringify(user) : null;
+    cachedAuth = user;
+    authListeners.forEach(listener => listener());
+  }
+};
+
+let themeListeners: Array<() => void> = [];
+let cachedThemeRaw: string | null = null;
+let cachedTheme: 'light' | 'dark' = 'light';
+
+const themeStore = {
+  subscribe(listener: () => void) {
+    themeListeners.push(listener);
+    return () => {
+      themeListeners = themeListeners.filter(l => l !== listener);
+    };
+  },
+  getSnapshot(): 'light' | 'dark' {
+    if (typeof window === 'undefined') return 'light';
+    try {
+      const raw = localStorage.getItem('samay_theme');
+      if (raw !== cachedThemeRaw) {
+        cachedThemeRaw = raw;
+        cachedTheme = (raw === 'dark' || raw === 'light') ? raw : 'light';
+      }
+      return cachedTheme;
+    } catch {
+      return 'light';
+    }
+  },
+  getServerSnapshot(): 'light' | 'dark' {
+    return 'light';
+  },
+  setTheme(theme: 'light' | 'dark') {
+    try {
+      localStorage.setItem('samay_theme', theme);
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    } catch {}
+    cachedThemeRaw = theme;
+    cachedTheme = theme;
+    themeListeners.forEach(listener => listener());
+  }
+};
+
+const emptySubscribe = () => () => {};
+
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -137,78 +225,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [isTampered, setIsTampered] = useState<boolean>(false);
 
-  const [theme, setThemeState] = useState<'light' | 'dark'>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedTheme = localStorage.getItem('samay_theme') as 'light' | 'dark' | null;
-        if (savedTheme === 'dark' || savedTheme === 'light') return savedTheme;
-      } catch {
-        // ignore
-      }
-    }
-    return 'light';
-  });
+  const currentUser = useSyncExternalStore(authStore.subscribe, authStore.getSnapshot, authStore.getServerSnapshot);
+  const theme = useSyncExternalStore(themeStore.subscribe, themeStore.getSnapshot, themeStore.getServerSnapshot);
+  const isHydrated = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedAuth = localStorage.getItem('samay_auth');
-        if (storedAuth) {
-          const parsed = JSON.parse(storedAuth);
-          if (parsed && parsed.userId && parsed.role) return parsed;
-        }
-      } catch {
-        // ignore
-      }
-    }
-    return null;
-  });
+  const [overrideRole, setOverrideRole] = useState<UserRole | null>(null);
+  const currentRole: UserRole = overrideRole || currentUser?.role || 'bureau_officer';
+  const isAuthenticated = Boolean(currentUser && currentUser.userId);
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedAuth = localStorage.getItem('samay_auth');
-        if (storedAuth) {
-          const parsed = JSON.parse(storedAuth);
-          return !!(parsed && parsed.userId && parsed.role);
-        }
-      } catch {
-        // ignore
-      }
-    }
-    return false;
-  });
-
-  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedAuth = localStorage.getItem('samay_auth');
-        if (storedAuth) {
-          const parsed = JSON.parse(storedAuth);
-          if (parsed && parsed.role) return parsed.role;
-        }
-      } catch {
-        // ignore
-      }
-    }
-    return 'bureau_officer';
-  });
-
-  // Synchronize document element class with theme on mount
+  // Synchronize document element class with theme changes
   useEffect(() => {
-    try {
-      const savedTheme = localStorage.getItem('samay_theme');
-      if (savedTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-        document.documentElement.setAttribute('data-theme', 'dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-        document.documentElement.setAttribute('data-theme', 'light');
-      }
-    } catch {
-      // localStorage may not be available in SSR or strict mode
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'light');
     }
-  }, []);
+  }, [theme]);
 
   const login = (userId: string, role: UserRole, roleLabel?: string, email?: string) => {
     const user: CurrentUser = {
@@ -217,34 +251,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       roleLabel: roleLabel || role,
       email: email || `${userId.toLowerCase()}@aicte-india.org`
     };
-    setIsAuthenticated(true);
-    setCurrentUser(user);
-    setCurrentRole(role);
-    try {
-      localStorage.setItem('samay_auth', JSON.stringify(user));
-    } catch {}
+    setOverrideRole(null);
+    authStore.setAuth(user);
   };
 
   const logout = () => {
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-    try {
-      localStorage.removeItem('samay_auth');
-    } catch {}
+    setOverrideRole(null);
+    authStore.setAuth(null);
   };
 
   const setTheme = (newTheme: 'light' | 'dark') => {
-    setThemeState(newTheme);
-    try {
-      if (newTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-        document.documentElement.setAttribute('data-theme', 'dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-        document.documentElement.setAttribute('data-theme', 'light');
-      }
-      localStorage.setItem('samay_theme', newTheme);
-    } catch {}
+    themeStore.setTheme(newTheme);
   };
 
   const toggleTheme = () => {
@@ -1533,9 +1550,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         theme,
         isAuthenticated,
         currentUser,
+        isHydrated,
         login,
         logout,
-        setRole: setCurrentRole,
+        setRole: setOverrideRole,
         setRegion: setCurrentRegion,
         setLanguage,
         setSelectedAppId,

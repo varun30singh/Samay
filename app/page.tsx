@@ -28,7 +28,7 @@ import DataImportView from '@/components/DataImportView';
 import { Application } from '@/lib/types';
 
 function MainApp() {
-  const { applications, isAuthenticated } = useApp();
+  const { applications, isAuthenticated, isHydrated } = useApp();
   const [activeTab, setActiveTab] = useState('deadline-guard');
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [ocrApp, setOcrApp] = useState<Application | null>(null);
@@ -42,8 +42,8 @@ function MainApp() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
-  // If not authenticated, render the Portal Authentication & Role Sign-in page
-  if (!isAuthenticated) {
+  // While SSR-ing or during initial client hydration, render LoginPage to guarantee zero hydration mismatch
+  if (!isHydrated || !isAuthenticated) {
     return <LoginPage />;
   }
 
