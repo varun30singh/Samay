@@ -10,7 +10,6 @@ import EVCManagementView from '@/components/EVCManagementView';
 import UndertakingsView from '@/components/UndertakingsView';
 import LeaseRadarView from '@/components/LeaseRadarView';
 import AuditLogView from '@/components/AuditLogView';
-import ReportsView from '@/components/ReportsView';
 import InstitutionPortalView from '@/components/InstitutionPortalView';
 import ApplicationDetailModal from '@/components/ApplicationDetailModal';
 import SmartOCRExtractorModal from '@/components/SmartOCRExtractorModal';
@@ -25,6 +24,7 @@ import ReadinessCheckView from '@/components/ReadinessCheckView';
 import OfficerCoverageView from '@/components/OfficerCoverageView';
 import DeficiencyTrackerView from '@/components/DeficiencyTrackerView';
 import DataImportView from '@/components/DataImportView';
+import RegionalAnalyticsView from '@/components/RegionalAnalyticsView';
 import { Application } from '@/lib/types';
 
 function MainApp() {
@@ -169,7 +169,9 @@ function MainApp() {
 
           {currentView === 'audit' && <AuditLogView />}
 
-          {currentView === 'reports' && <ReportsView />}
+          {currentView === 'regional-analytics' && <RegionalAnalyticsView />}
+
+          {currentView === 'reports' && <RegionalAnalyticsView />}
         </main>
 
         {/* Modals & Overlays */}

@@ -1,5 +1,6 @@
 import { PrismaClient, app_role, application_stage, application_type, deficiency_severity, deficiency_status, document_type, document_status, evc_status, undertaking_status } from '@prisma/client';
 import crypto from 'crypto';
+import { DEFAULT_APH_TEMPLATES } from '../lib/workflowService';
 
 const prisma = new PrismaClient();
 
@@ -56,6 +57,7 @@ const DEMO_USERS = [
 ];
 
 const DEMO_INSTITUTIONS = [
+  // 1. Western
   {
     id: 'a0000000-0000-0000-0000-000000000001',
     institution_code: 'INST-100234',
@@ -98,6 +100,7 @@ const DEMO_INSTITUTIONS = [
     contact_phone: '+91-22-24198101',
     established_year: 1887
   },
+  // 2. Northern
   {
     id: 'a0000000-0000-0000-0000-000000000004',
     institution_code: 'INST-100237',
@@ -111,6 +114,96 @@ const DEMO_INSTITUTIONS = [
     contact_email: 'registrar@dtu.ac.in',
     contact_phone: '+91-11-27871018',
     established_year: 1941
+  },
+  // 3. Southern
+  {
+    id: 'a0000000-0000-0000-0000-000000000005',
+    institution_code: 'INST-100238',
+    legal_name: 'College of Engineering Guindy, Anna University',
+    display_name: 'CEG Chennai',
+    category: 'Engineering & Technology',
+    institution_type: 'Government University',
+    region: 'Southern',
+    state: 'Tamil Nadu',
+    district: 'Chennai',
+    contact_email: 'dean@ceg.annauniv.edu',
+    contact_phone: '+91-44-22358491',
+    established_year: 1960
+  },
+  // 4. Eastern
+  {
+    id: 'a0000000-0000-0000-0000-000000000006',
+    institution_code: 'INST-100239',
+    legal_name: 'Jadavpur University Faculty of Engineering',
+    display_name: 'JU Kolkata',
+    category: 'Engineering & Technology',
+    institution_type: 'State University',
+    region: 'Eastern',
+    state: 'West Bengal',
+    district: 'Kolkata',
+    contact_email: 'registrar@jadavpuruniversity.in',
+    contact_phone: '+91-33-24146666',
+    established_year: 1906
+  },
+  // 5. Central
+  {
+    id: 'a0000000-0000-0000-0000-000000000007',
+    institution_code: 'INST-100240',
+    legal_name: 'Shri Govindram Seksaria Institute of Technology and Science',
+    display_name: 'SGSITS Indore',
+    category: 'Engineering & Technology',
+    institution_type: 'Government-Aided Autonomous',
+    region: 'Central',
+    state: 'Madhya Pradesh',
+    district: 'Indore',
+    contact_email: 'director@sgsits.ac.in',
+    contact_phone: '+91-731-2582112',
+    established_year: 1952
+  },
+  // 6. South-Western
+  {
+    id: 'a0000000-0000-0000-0000-000000000008',
+    institution_code: 'INST-100241',
+    legal_name: 'B.M.S. College of Engineering',
+    display_name: 'BMSCE Bengaluru',
+    category: 'Engineering & Technology',
+    institution_type: 'Private Autonomous',
+    region: 'South-Western',
+    state: 'Karnataka',
+    district: 'Bengaluru Urban',
+    contact_email: 'principal@bmsce.ac.in',
+    contact_phone: '+91-80-26622130',
+    established_year: 1946
+  },
+  // 7. South-Central
+  {
+    id: 'a0000000-0000-0000-0000-000000000009',
+    institution_code: 'INST-100242',
+    legal_name: 'JNTUH University College of Engineering',
+    display_name: 'JNTUH Hyderabad',
+    category: 'Engineering & Technology',
+    institution_type: 'Government University',
+    region: 'South-Central',
+    state: 'Telangana',
+    district: 'Hyderabad',
+    contact_email: 'principal@jntuhceh.ac.in',
+    contact_phone: '+91-40-23158661',
+    established_year: 1965
+  },
+  // 8. North-Western
+  {
+    id: 'a0000000-0000-0000-0000-000000000010',
+    institution_code: 'INST-100243',
+    legal_name: 'Thapar Institute of Engineering & Technology',
+    display_name: 'TIET Patiala',
+    category: 'Engineering & Technology',
+    institution_type: 'Deemed to be University',
+    region: 'North-Western',
+    state: 'Punjab',
+    district: 'Patiala',
+    contact_email: 'registrar@thapar.edu',
+    contact_phone: '+91-175-2393021',
+    established_year: 1956
   }
 ];
 
@@ -129,8 +222,8 @@ async function main() {
     }
     console.log(`   ✓ ${DEMO_USERS.length} auth.users accounts verified.`);
 
-    // 2. Upsert Institutions
-    console.log('2. Upserting baseline institutions...');
+    // 2. Upsert Institutions across all 8 AICTE Regions
+    console.log('2. Upserting baseline institutions across all 8 regions...');
     for (const inst of DEMO_INSTITUTIONS) {
       await prisma.institutions.upsert({
         where: { id: inst.id },
@@ -165,7 +258,7 @@ async function main() {
         }
       });
     }
-    console.log(`   ✓ ${DEMO_INSTITUTIONS.length} institutions verified.`);
+    console.log(`   ✓ ${DEMO_INSTITUTIONS.length} institutions verified across 8 statutory regions.`);
 
     // 3. Upsert Profiles
     console.log('3. Upserting profiles...');
@@ -194,8 +287,40 @@ async function main() {
     }
     console.log(`   ✓ ${DEMO_USERS.length} profiles verified.`);
 
-    // 4. Working Calendars and Gazetted Holidays
-    console.log('4. Seeding working calendar and holidays...');
+    // 4. Seed Seeded APH Workflow Templates in system_settings
+    console.log('4. Seeding APH Workflow Templates in system_settings...');
+    await prisma.system_settings.upsert({
+      where: { setting_key: 'workflow_templates' },
+      update: {
+        setting_value: JSON.parse(
+          JSON.stringify({
+            version: '1.0.0',
+            templates: DEFAULT_APH_TEMPLATES,
+            updatedAt: new Date().toISOString()
+          })
+        ),
+        description: 'AICTE Configurable Regulatory Workflow Templates & Safeguards',
+        updated_by: DEMO_USERS[0].id,
+        updated_at: new Date()
+      },
+      create: {
+        setting_key: 'workflow_templates',
+        setting_value: JSON.parse(
+          JSON.stringify({
+            version: '1.0.0',
+            templates: DEFAULT_APH_TEMPLATES,
+            updatedAt: new Date().toISOString()
+          })
+        ),
+        description: 'AICTE Configurable Regulatory Workflow Templates & Safeguards',
+        updated_by: DEMO_USERS[0].id,
+        updated_at: new Date()
+      }
+    });
+    console.log(`   ✓ ${DEFAULT_APH_TEMPLATES.length} Seeded APH Workflow Templates configured.`);
+
+    // 5. Working Calendars and Gazetted Holidays
+    console.log('5. Seeding working calendar and holidays...');
     const calendarId = 'c0000000-0000-0000-0000-000000000001';
     await prisma.working_calendars.upsert({
       where: { id: calendarId },
@@ -252,9 +377,10 @@ async function main() {
     }
     console.log(`   ✓ Working calendar and ${gazettedHolidays.length} holidays verified.`);
 
-    // 5. Seed Applications
-    console.log('5. Seeding demo regulatory applications...');
+    // 6. Comprehensive Demo Applications Covering All 4 Workflows and Regions
+    console.log('6. Seeding demo regulatory applications across all workflows and regions...');
     const demoApplications = [
+      // 1. SPIT - Template A (Only Scrutiny) - Under Scrutiny
       {
         id: 'd0000000-0000-0000-0000-000000000001',
         application_number: 'AICTE-2026-WRO-001',
@@ -268,8 +394,14 @@ async function main() {
         statutory_deadline: new Date('2026-04-30T00:00:00.000Z'),
         submitted_at: new Date('2026-01-15T10:00:00.000Z'),
         risk_score: 22.5,
-        risk_flags: ['Approaching scrutiny window threshold']
+        risk_flags: ['Approaching scrutiny window threshold'],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-scrutiny-only',
+          workflow_template_name: 'APH Template A: Only Scrutiny'
+        }
       },
+      // 2. COEP - Template B (Scrutiny + EVC) - EVC Scheduled
       {
         id: 'd0000000-0000-0000-0000-000000000002',
         application_number: 'AICTE-2026-WRO-002',
@@ -283,8 +415,14 @@ async function main() {
         statutory_deadline: new Date('2026-04-30T00:00:00.000Z'),
         submitted_at: new Date('2026-01-20T11:30:00.000Z'),
         risk_score: 45.0,
-        risk_flags: ['EVC inspection pending confirmation']
+        risk_flags: ['EVC inspection pending confirmation'],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-scrutiny-evc',
+          workflow_template_name: 'APH Template B: Scrutiny + EVC'
+        }
       },
+      // 3. VJTI - Template B (Scrutiny + EVC) - Deficiency Raised
       {
         id: 'd0000000-0000-0000-0000-000000000003',
         application_number: 'AICTE-2026-WRO-003',
@@ -298,8 +436,14 @@ async function main() {
         statutory_deadline: new Date('2026-04-30T00:00:00.000Z'),
         submitted_at: new Date('2026-01-25T09:00:00.000Z'),
         risk_score: 65.0,
-        risk_flags: ['Deficiency open > 10 working days']
+        risk_flags: ['Deficiency open > 10 working days'],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-scrutiny-evc',
+          workflow_template_name: 'APH Template B: Scrutiny + EVC'
+        }
       },
+      // 4. DTU - Template B (Scrutiny + EVC) - Ready for EVC (Northern)
       {
         id: 'd0000000-0000-0000-0000-000000000004',
         application_number: 'AICTE-2026-NRO-001',
@@ -313,7 +457,150 @@ async function main() {
         statutory_deadline: new Date('2026-04-30T00:00:00.000Z'),
         submitted_at: new Date('2026-02-01T14:15:00.000Z'),
         risk_score: 15.0,
-        risk_flags: []
+        risk_flags: [],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-scrutiny-evc',
+          workflow_template_name: 'APH Template B: Scrutiny + EVC'
+        }
+      },
+      // 5. CEG Anna Univ - Template C (EVC + SAC/SHC) - Under Final Review (Southern)
+      {
+        id: 'd0000000-0000-0000-0000-000000000005',
+        application_number: 'AICTE-2026-SRO-001',
+        institution_id: DEMO_INSTITUTIONS[4].id,
+        submitted_by: null,
+        assigned_officer_id: null,
+        application_type: application_type.extension_of_approval,
+        stage: application_stage.under_final_review,
+        academic_year: '2026-2027',
+        requested_intake: 600,
+        statutory_deadline: new Date('2026-04-30T00:00:00.000Z'),
+        submitted_at: new Date('2026-01-10T10:00:00.000Z'),
+        risk_score: 10.0,
+        risk_flags: [],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-evc-sac-shc',
+          workflow_template_name: 'APH Template C: EVC + SAC/SHC'
+        }
+      },
+      // 6. Jadavpur Univ - Template D (Only EVC) - EVC Completed (Eastern)
+      {
+        id: 'd0000000-0000-0000-0000-000000000006',
+        application_number: 'AICTE-2026-ERO-001',
+        institution_id: DEMO_INSTITUTIONS[5].id,
+        submitted_by: null,
+        assigned_officer_id: null,
+        application_type: application_type.extension_of_approval,
+        stage: application_stage.evc_completed,
+        academic_year: '2026-2027',
+        requested_intake: 360,
+        statutory_deadline: new Date('2026-04-30T00:00:00.000Z'),
+        submitted_at: new Date('2026-01-12T09:30:00.000Z'),
+        risk_score: 30.0,
+        risk_flags: [],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-evc-only',
+          workflow_template_name: 'APH Template D: Only EVC'
+        }
+      },
+      // 7. SGSITS Indore - Template A - Approved On-Time (Central)
+      {
+        id: 'd0000000-0000-0000-0000-000000000007',
+        application_number: 'AICTE-2026-CRO-001',
+        institution_id: DEMO_INSTITUTIONS[6].id,
+        submitted_by: null,
+        assigned_officer_id: DEMO_USERS[1].id,
+        application_type: application_type.extension_of_approval,
+        stage: application_stage.approved,
+        academic_year: '2026-2027',
+        requested_intake: 480,
+        statutory_deadline: new Date('2026-04-30T00:00:00.000Z'),
+        submitted_at: new Date('2026-01-05T08:00:00.000Z'),
+        final_decision_at: new Date('2026-02-15T15:30:00.000Z'),
+        final_decision_by: DEMO_USERS[5].id,
+        decision_reason: 'Statutory compliance complete; Extension of Approval granted for AY 2026-2027.',
+        decision_reference: 'AICTE/CRO/EOA/2026/001',
+        risk_score: 5.0,
+        risk_flags: [],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-scrutiny-only',
+          workflow_template_name: 'APH Template A: Only Scrutiny'
+        }
+      },
+      // 8. BMSCE Bengaluru - Template B - Approved On-Time (South-Western)
+      {
+        id: 'd0000000-0000-0000-0000-000000000008',
+        application_number: 'AICTE-2026-SWRO-001',
+        institution_id: DEMO_INSTITUTIONS[7].id,
+        submitted_by: null,
+        assigned_officer_id: DEMO_USERS[1].id,
+        application_type: application_type.intake_increase,
+        stage: application_stage.approved,
+        academic_year: '2026-2027',
+        requested_intake: 240,
+        statutory_deadline: new Date('2026-04-30T00:00:00.000Z'),
+        submitted_at: new Date('2026-01-08T11:00:00.000Z'),
+        final_decision_at: new Date('2026-02-28T16:00:00.000Z'),
+        final_decision_by: DEMO_USERS[5].id,
+        decision_reason: 'EVC physical infrastructure report cleared; Intake expansion granted.',
+        decision_reference: 'AICTE/SWRO/EXP/2026/001',
+        risk_score: 8.0,
+        risk_flags: [],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-scrutiny-evc',
+          workflow_template_name: 'APH Template B: Scrutiny + EVC'
+        }
+      },
+      // 9. JNTUH Hyderabad - Template B - Overdue Pending (South-Central)
+      {
+        id: 'd0000000-0000-0000-0000-000000000009',
+        application_number: 'AICTE-2026-SCRO-001',
+        institution_id: DEMO_INSTITUTIONS[8].id,
+        submitted_by: null,
+        assigned_officer_id: null,
+        application_type: application_type.new_institution,
+        stage: application_stage.under_scrutiny,
+        academic_year: '2026-2027',
+        requested_intake: 300,
+        statutory_deadline: new Date('2026-02-01T00:00:00.000Z'), // Passed deadline!
+        submitted_at: new Date('2025-11-15T10:00:00.000Z'),
+        risk_score: 88.0,
+        risk_flags: ['Statutory deadline expired without scrutiny clearance'],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-scrutiny-evc',
+          workflow_template_name: 'APH Template B: Scrutiny + EVC'
+        }
+      },
+      // 10. TIET Patiala - Template A - Rejected on Grounds (North-Western)
+      {
+        id: 'd0000000-0000-0000-0000-000000000010',
+        application_number: 'AICTE-2026-NWRO-001',
+        institution_id: DEMO_INSTITUTIONS[9].id,
+        submitted_by: null,
+        assigned_officer_id: DEMO_USERS[1].id,
+        application_type: application_type.intake_increase,
+        stage: application_stage.rejected,
+        academic_year: '2026-2027',
+        requested_intake: 120,
+        statutory_deadline: new Date('2026-04-30T00:00:00.000Z'),
+        submitted_at: new Date('2026-01-02T12:00:00.000Z'),
+        final_decision_at: new Date('2026-02-10T14:00:00.000Z'),
+        final_decision_by: DEMO_USERS[5].id,
+        decision_reason: 'Non-rectification of primary land title deficiency within statutory 14 days.',
+        decision_reference: 'AICTE/NWRO/REJ/2026/001',
+        risk_score: 95.0,
+        risk_flags: ['Statutory deficiency unremedied'],
+        metadata: {
+          is_demo: true,
+          workflow_template_id: 'aph-scrutiny-only',
+          workflow_template_name: 'APH Template A: Only Scrutiny'
+        }
       }
     ];
 
@@ -331,8 +618,13 @@ async function main() {
           requested_intake: app.requested_intake,
           statutory_deadline: app.statutory_deadline,
           submitted_at: app.submitted_at,
+          final_decision_at: app.final_decision_at || null,
+          final_decision_by: app.final_decision_by || null,
+          decision_reason: app.decision_reason || null,
+          decision_reference: app.decision_reference || null,
           risk_score: app.risk_score,
-          risk_flags: app.risk_flags
+          risk_flags: app.risk_flags,
+          metadata: app.metadata
         },
         create: {
           id: app.id,
@@ -346,8 +638,13 @@ async function main() {
           requested_intake: app.requested_intake,
           statutory_deadline: app.statutory_deadline,
           submitted_at: app.submitted_at,
+          final_decision_at: app.final_decision_at || null,
+          final_decision_by: app.final_decision_by || null,
+          decision_reason: app.decision_reason || null,
+          decision_reference: app.decision_reference || null,
           risk_score: app.risk_score,
-          risk_flags: app.risk_flags
+          risk_flags: app.risk_flags,
+          metadata: app.metadata
         }
       });
 
@@ -454,10 +751,10 @@ async function main() {
         }
       }
     }
-    console.log(`   ✓ ${demoApplications.length} demo applications verified.`);
+    console.log(`   ✓ ${demoApplications.length} demo applications verified across 8 regions and 4 workflow templates.`);
 
-    // 6. Cryptographic Audit Genesis Ledger Block
-    console.log('6. Seeding cryptographic audit ledger genesis block...');
+    // 7. Cryptographic Audit Genesis Ledger Block
+    console.log('7. Seeding cryptographic audit ledger genesis block...');
     const genesisBlock = await prisma.audit_ledger.findFirst({
       orderBy: { block_index: 'asc' }
     });

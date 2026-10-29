@@ -26,7 +26,8 @@ import {
   ClipboardCheck,
   UserCheck,
   ListTodo,
-  Upload
+  Upload,
+  BarChart3
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -167,6 +168,14 @@ export default function Sidebar({
       shortLabel: 'Audit',
       icon: Lock,
       statusDot: chainIntegrity?.isValid ? 'bg-primary dark:bg-emerald-400' : 'bg-error animate-ping'
+    },
+    {
+      id: 'regional-analytics',
+      label: 'Regional Analytics',
+      shortLabel: 'Analytics',
+      icon: BarChart3,
+      badge: 'FR-F4',
+      badgeColor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
     },
     {
       id: 'reports',
