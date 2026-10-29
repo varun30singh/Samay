@@ -10,9 +10,31 @@ export interface TransitionRule {
   allowedRoles: string[];
 }
 
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+  category: 'APH_PRESCRIBED' | 'CUSTOM';
+  version: string;
+  isActive: boolean;
+  applicableTypes: string[];
+  stages: application_stage[];
+  transitions: TransitionRule[];
+  policySafeguards: {
+    requiresCompetentAuthorityDecision: boolean;
+    requiresAuditLedger: boolean;
+    allowDirectApprovalFromScrutiny: boolean;
+    allowDirectApprovalFromEvc: boolean;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export const WORKFLOW_TRANSITION_RULES: TransitionRule[] = [
   { from: 'draft', to: 'submitted', allowedRoles: ['applicant', 'institution', 'institution_admin'] },
   { from: 'submitted', to: 'under_scrutiny', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+  { from: 'submitted', to: 'ready_for_evc', allowedRoles: ['regional_officer', 'admin', 'system_admin'] }, // For Direct EVC template
   { from: 'under_scrutiny', to: 'deficiency_raised', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
   { from: 'under_scrutiny', to: 'ready_for_evc', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
   { from: 'under_scrutiny', to: 'under_final_review', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
@@ -20,7 +42,7 @@ export const WORKFLOW_TRANSITION_RULES: TransitionRule[] = [
   { from: 'resubmitted', to: 'under_scrutiny', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
   { from: 'ready_for_evc', to: 'evc_scheduled', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
   { from: 'evc_scheduled', to: 'evc_completed', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
-  { from: 'evc_completed', to: 'under_final_review', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+  { from: 'evc_completed', to: 'under_final_review', allowedRoles: ['scrutiny_officer', 'regional_officer', 'bureau_officer', 'admin', 'system_admin'] },
   { from: 'under_final_review', to: 'approved', allowedRoles: ['competent_authority', 'approving_authority'] },
   { from: 'under_final_review', to: 'rejected', allowedRoles: ['competent_authority', 'approving_authority'] },
   // Universal withdrawal allowed before final decision
@@ -34,9 +56,301 @@ export const WORKFLOW_TRANSITION_RULES: TransitionRule[] = [
   { from: 'under_final_review', to: 'withdrawn', allowedRoles: ['applicant', 'institution', 'institution_admin'] },
 ];
 
+/**
+ * 4 Pre-Configured Seeded APH Approval Workflow Templates
+ */
+export const DEFAULT_APH_TEMPLATES: WorkflowTemplate[] = [
+  {
+    id: 'aph-scrutiny-only',
+    code: 'TEMPLATE_A',
+    name: 'APH Template A: Only Scrutiny (Extension of Approval)',
+    description: 'Standard Extension of Approval (EoA) without physical parameter change. Evaluated through digital document scrutiny, deficiency resolution, and final executive review.',
+    category: 'APH_PRESCRIBED',
+    version: '1.0.0',
+    isActive: true,
+    applicableTypes: ['extension_of_approval'],
+    stages: [
+      'submitted',
+      'under_scrutiny',
+      'deficiency_raised',
+      'resubmitted',
+      'under_final_review',
+      'approved',
+      'rejected',
+      'withdrawn'
+    ],
+    transitions: [
+      { from: 'draft', to: 'submitted', allowedRoles: ['applicant', 'institution', 'institution_admin'] },
+      { from: 'submitted', to: 'under_scrutiny', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_scrutiny', to: 'deficiency_raised', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'deficiency_raised', to: 'resubmitted', allowedRoles: ['applicant', 'institution', 'institution_admin'] },
+      { from: 'resubmitted', to: 'under_scrutiny', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_scrutiny', to: 'ready_for_evc', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'ready_for_evc', to: 'evc_scheduled', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'evc_scheduled', to: 'evc_completed', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'evc_completed', to: 'under_final_review', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_scrutiny', to: 'under_final_review', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_final_review', to: 'approved', allowedRoles: ['competent_authority', 'approving_authority'] },
+      { from: 'under_final_review', to: 'rejected', allowedRoles: ['competent_authority', 'approving_authority'] },
+      { from: 'draft', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] },
+      { from: 'submitted', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] },
+      { from: 'under_scrutiny', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] }
+    ],
+    policySafeguards: {
+      requiresCompetentAuthorityDecision: true,
+      requiresAuditLedger: true,
+      allowDirectApprovalFromScrutiny: false,
+      allowDirectApprovalFromEvc: false
+    }
+  },
+  {
+    id: 'aph-scrutiny-evc',
+    code: 'TEMPLATE_B',
+    name: 'APH Template B: Scrutiny + EVC (New Campus & Intake Expansion)',
+    description: 'Mandatory two-stage verification for establishment of new technical institutions, increase in approved intake, or addition of new programs.',
+    category: 'APH_PRESCRIBED',
+    version: '1.0.0',
+    isActive: true,
+    applicableTypes: ['new_institution', 'intake_increase', 'course_addition'],
+    stages: [
+      'submitted',
+      'under_scrutiny',
+      'deficiency_raised',
+      'resubmitted',
+      'ready_for_evc',
+      'evc_scheduled',
+      'evc_completed',
+      'under_final_review',
+      'approved',
+      'rejected',
+      'withdrawn'
+    ],
+    transitions: [
+      { from: 'draft', to: 'submitted', allowedRoles: ['applicant', 'institution', 'institution_admin'] },
+      { from: 'submitted', to: 'under_scrutiny', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_scrutiny', to: 'deficiency_raised', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'deficiency_raised', to: 'resubmitted', allowedRoles: ['applicant', 'institution', 'institution_admin'] },
+      { from: 'resubmitted', to: 'under_scrutiny', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_scrutiny', to: 'ready_for_evc', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'ready_for_evc', to: 'evc_scheduled', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'evc_scheduled', to: 'evc_completed', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'evc_completed', to: 'under_final_review', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_final_review', to: 'approved', allowedRoles: ['competent_authority', 'approving_authority'] },
+      { from: 'under_final_review', to: 'rejected', allowedRoles: ['competent_authority', 'approving_authority'] },
+      { from: 'submitted', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] },
+      { from: 'under_scrutiny', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] },
+      { from: 'ready_for_evc', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] },
+      { from: 'evc_scheduled', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] }
+    ],
+    policySafeguards: {
+      requiresCompetentAuthorityDecision: true,
+      requiresAuditLedger: true,
+      allowDirectApprovalFromScrutiny: false,
+      allowDirectApprovalFromEvc: false
+    }
+  },
+  {
+    id: 'aph-evc-sac-shc',
+    code: 'TEMPLATE_C',
+    name: 'APH Template C: EVC + SAC/SHC (Standing Appellate & Hearing Review)',
+    description: 'Adjudication workflow for cases requiring Standing Appellate Committee (SAC) or Standing Hearing Committee (SHC) evaluation following inspection disputes or appeals.',
+    category: 'APH_PRESCRIBED',
+    version: '1.0.0',
+    isActive: true,
+    applicableTypes: ['new_institution', 'extension_of_approval', 'intake_increase'],
+    stages: [
+      'submitted',
+      'under_scrutiny',
+      'ready_for_evc',
+      'evc_scheduled',
+      'evc_completed',
+      'under_final_review',
+      'approved',
+      'rejected',
+      'withdrawn'
+    ],
+    transitions: [
+      { from: 'draft', to: 'submitted', allowedRoles: ['applicant', 'institution', 'institution_admin'] },
+      { from: 'submitted', to: 'under_scrutiny', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_scrutiny', to: 'ready_for_evc', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'ready_for_evc', to: 'evc_scheduled', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'evc_scheduled', to: 'evc_completed', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'evc_completed', to: 'under_final_review', allowedRoles: ['bureau_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_final_review', to: 'approved', allowedRoles: ['competent_authority', 'approving_authority'] },
+      { from: 'under_final_review', to: 'rejected', allowedRoles: ['competent_authority', 'approving_authority'] },
+      { from: 'submitted', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] },
+      { from: 'under_final_review', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] }
+    ],
+    policySafeguards: {
+      requiresCompetentAuthorityDecision: true,
+      requiresAuditLedger: true,
+      allowDirectApprovalFromScrutiny: false,
+      allowDirectApprovalFromEvc: false
+    }
+  },
+  {
+    id: 'aph-evc-only',
+    code: 'TEMPLATE_D',
+    name: 'APH Template D: Only EVC (Surprise / Fast-Track Inspection)',
+    description: 'Fast-track physical verification dispatch. Document scrutiny is bypassed in favor of direct on-site physical infrastructure and faculty assessment.',
+    category: 'APH_PRESCRIBED',
+    version: '1.0.0',
+    isActive: true,
+    applicableTypes: ['extension_of_approval', 'new_institution'],
+    stages: [
+      'submitted',
+      'ready_for_evc',
+      'evc_scheduled',
+      'evc_completed',
+      'under_final_review',
+      'approved',
+      'rejected',
+      'withdrawn'
+    ],
+    transitions: [
+      { from: 'draft', to: 'submitted', allowedRoles: ['applicant', 'institution', 'institution_admin'] },
+      { from: 'submitted', to: 'ready_for_evc', allowedRoles: ['regional_officer', 'admin', 'system_admin'] },
+      { from: 'ready_for_evc', to: 'evc_scheduled', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'evc_scheduled', to: 'evc_completed', allowedRoles: ['evc_coordinator', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'evc_completed', to: 'under_final_review', allowedRoles: ['scrutiny_officer', 'regional_officer', 'admin', 'system_admin'] },
+      { from: 'under_final_review', to: 'approved', allowedRoles: ['competent_authority', 'approving_authority'] },
+      { from: 'under_final_review', to: 'rejected', allowedRoles: ['competent_authority', 'approving_authority'] },
+      { from: 'submitted', to: 'withdrawn', allowedRoles: ['applicant', 'institution'] }
+    ],
+    policySafeguards: {
+      requiresCompetentAuthorityDecision: true,
+      requiresAuditLedger: true,
+      allowDirectApprovalFromScrutiny: false,
+      allowDirectApprovalFromEvc: false
+    }
+  }
+];
+
 let cachedDynamicRules: TransitionRule[] | null = null;
+let cachedTemplates: WorkflowTemplate[] | null = null;
 let lastRulesCacheTime = 0;
 const RULES_CACHE_TTL_MS = 30000;
+
+/**
+ * Validates a workflow template against statutory policy safeguards.
+ */
+export function validateWorkflowPolicy(template: WorkflowTemplate): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (!template.id || typeof template.id !== 'string') {
+    errors.push('Workflow template must have a valid identifier.');
+  }
+  if (!template.name || typeof template.name !== 'string') {
+    errors.push('Workflow template must have a title.');
+  }
+  if (!Array.isArray(template.transitions) || template.transitions.length === 0) {
+    errors.push('Workflow template must define transition paths.');
+  }
+
+  // 1. Final Decision Safeguard: Must have transitions to both 'approved' and 'rejected'
+  const hasApproved = template.transitions.some(t => t.to === 'approved');
+  const hasRejected = template.transitions.some(t => t.to === 'rejected');
+  if (!hasApproved || !hasRejected) {
+    errors.push('Policy Safeguard: Workflow must terminate in both formal "approved" and "rejected" states.');
+  }
+
+  // 2. Exclusive Competent Authority Safeguard for Final Decision
+  const finalTransitions = template.transitions.filter(t => t.to === 'approved' || t.to === 'rejected');
+  const allowedApprovers = ['competent_authority', 'approving_authority'];
+  for (const t of finalTransitions) {
+    const invalidRoles = t.allowedRoles.filter(role => !allowedApprovers.includes(role.toLowerCase()));
+    if (invalidRoles.length > 0) {
+      errors.push(
+        `Policy Safeguard: Only Competent Authority can record final decision "${t.to}". Unauthorized roles detected: ${invalidRoles.join(', ')}.`
+      );
+    }
+  }
+
+  // 3. No Auto-Approval Bypass Safeguard
+  const disallowedPreApprovals: application_stage[] = [
+    'under_scrutiny',
+    'ready_for_evc',
+    'evc_scheduled',
+    'evc_completed',
+    'submitted',
+    'resubmitted',
+    'draft',
+    'deficiency_raised'
+  ];
+  for (const t of template.transitions) {
+    if ((t.to === 'approved' || t.to === 'rejected') && disallowedPreApprovals.includes(t.from) && t.from !== 'under_final_review') {
+      errors.push(
+        `Policy Safeguard: Auto-approval bypass prohibited. Stage "${t.from}" cannot transition directly to "${t.to}". Final review or committee stage is mandatory.`
+      );
+    }
+  }
+
+  // 4. Reachability from 'submitted' to terminal decisions
+  const adjacency = new Map<application_stage, application_stage[]>();
+  for (const t of template.transitions) {
+    if (!adjacency.has(t.from)) adjacency.set(t.from, []);
+    adjacency.get(t.from)!.push(t.to);
+  }
+
+  const visited = new Set<application_stage>();
+  const queue: application_stage[] = ['submitted'];
+  visited.add('submitted');
+
+  while (queue.length > 0) {
+    const curr = queue.shift()!;
+    const neighbors = adjacency.get(curr) || [];
+    for (const n of neighbors) {
+      if (!visited.has(n)) {
+        visited.add(n);
+        queue.push(n);
+      }
+    }
+  }
+
+  if (!visited.has('approved') || !visited.has('rejected')) {
+    errors.push('Policy Safeguard: Unreachable termination state. Path from "submitted" to "approved" and "rejected" must be continuous.');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Retrieves all registered workflow templates (Seeded APH + Custom from database).
+ */
+export async function getWorkflowTemplates(): Promise<{ templates: WorkflowTemplate[]; version: string; source: string }> {
+  const now = Date.now();
+  if (cachedTemplates && (now - lastRulesCacheTime < RULES_CACHE_TTL_MS)) {
+    return { templates: cachedTemplates, version: 'dynamic', source: 'cache' };
+  }
+
+  try {
+    const setting = await prisma.system_settings.findUnique({
+      where: { setting_key: 'workflow_templates' }
+    });
+
+    if (setting && setting.setting_value && typeof setting.setting_value === 'object') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const val = setting.setting_value as any;
+      if (Array.isArray(val.templates) && val.templates.length > 0) {
+        cachedTemplates = val.templates;
+        lastRulesCacheTime = now;
+        return {
+          templates: val.templates,
+          version: val.version || '1.1.0',
+          source: 'database'
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[WorkflowService] Could not read workflow_templates from system_settings, using defaults:', err);
+  }
+
+  cachedTemplates = DEFAULT_APH_TEMPLATES;
+  return { templates: DEFAULT_APH_TEMPLATES, version: '1.0.0', source: 'default' };
+}
 
 export async function getActiveWorkflowRules(): Promise<{ rules: TransitionRule[]; version: string; source: string; updatedAt?: string }> {
   const now = Date.now();
@@ -70,6 +384,7 @@ export async function getActiveWorkflowRules(): Promise<{ rules: TransitionRule[
 
 export function invalidateWorkflowRulesCache() {
   cachedDynamicRules = null;
+  cachedTemplates = null;
   lastRulesCacheTime = 0;
 }
 
@@ -120,6 +435,36 @@ export function canTransition(
 }
 
 /**
+ * Resolves the appropriate workflow template and transition rules for a specific application.
+ */
+export async function getRulesForApplication(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata: any,
+  applicationType: string
+): Promise<{ templateId: string; templateName: string; rules: TransitionRule[] }> {
+  const { templates } = await getWorkflowTemplates();
+  const metaObj = (metadata || {}) as Record<string, unknown>;
+
+  // Check if pinned to a specific template
+  if (metaObj.workflow_template_id && typeof metaObj.workflow_template_id === 'string') {
+    const found = templates.find(t => t.id === metaObj.workflow_template_id);
+    if (found && found.transitions && found.transitions.length > 0) {
+      return { templateId: found.id, templateName: found.name, rules: found.transitions };
+    }
+  }
+
+  // Otherwise match by application_type
+  const matched = templates.find(t => t.applicableTypes.includes(applicationType) && t.isActive);
+  if (matched && matched.transitions && matched.transitions.length > 0) {
+    return { templateId: matched.id, templateName: matched.name, rules: matched.transitions };
+  }
+
+  // Fallback to active global rules
+  const active = await getActiveWorkflowRules();
+  return { templateId: 'default', templateName: 'Standard Regulatory Matrix', rules: active.rules };
+}
+
+/**
  * Executes a transactional workflow stage transition with full audit logging and alert delivery.
  */
 export async function transitionApplicationStage(params: {
@@ -137,9 +482,11 @@ export async function transitionApplicationStage(params: {
     select: {
       id: true,
       application_number: true,
+      application_type: true,
       stage: true,
       institution_id: true,
       submitted_by: true,
+      metadata: true,
       institutions: { select: { id: true, region: true, legal_name: true } }
     }
   });
@@ -162,17 +509,29 @@ export async function transitionApplicationStage(params: {
     }
   }
 
-  // 3. Validate transition rules
-  const { rules: activeRules } = await getActiveWorkflowRules();
-  const check = canTransition(app.stage, targetStage, actor.role, activeRules);
+  // 3. Resolve applicable workflow rules for this specific application
+  const { templateId, templateName, rules: templateRules } = await getRulesForApplication(
+    app.metadata,
+    app.application_type
+  );
+
+  const check = canTransition(app.stage, targetStage, actor.role, templateRules);
   if (!check.allowed) {
     throw new Error(check.reason);
   }
 
-  const now = new Date();
+  // 4. Critical Safeguard: Only Competent Authority can approve or reject
   const isFinalDecision = targetStage === 'approved' || targetStage === 'rejected';
+  if (isFinalDecision) {
+    const isCa = actor.role === 'competent_authority' || actor.role === 'approving_authority';
+    if (!isCa) {
+      throw new Error('Forbidden: Only the Competent Authority possesses the statutory mandate to grant or reject approval.');
+    }
+  }
 
-  // 4. Perform transactional database updates
+  const now = new Date();
+
+  // 5. Perform transactional database updates
   const updatedApp = await prisma.$transaction(async tx => {
     // A. Update application record
     const updated = await tx.applications.update({
@@ -199,15 +558,20 @@ export async function transitionApplicationStage(params: {
         new_stage: targetStage,
         changed_by: actor.userId,
         reason: reason || null,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        metadata: (metadata || {}) as any
+        metadata: JSON.parse(
+          JSON.stringify({
+            ...(metadata || {}),
+            workflow_template_id: templateId,
+            workflow_template_name: templateName
+          })
+        )
       }
     });
 
     return updated;
   });
 
-  // 5. Audit Logging
+  // 6. Audit Logging
   await recordAuditEvent({
     actorId: actor.userId,
     actorName: `${actor.role}:${actor.userId}`,
@@ -218,12 +582,13 @@ export async function transitionApplicationStage(params: {
       applicationNumber: app.application_number,
       previousStage: app.stage,
       newStage: targetStage,
+      workflowTemplate: templateId,
       reason: reason || null,
       metadata: metadata || null
     }
   });
 
-  // 6. Generate Alert for Applicant or Officer
+  // 7. Generate Alert for Applicant or Officer
   if (app.submitted_by) {
     await createAlert({
       recipientId: app.submitted_by,
