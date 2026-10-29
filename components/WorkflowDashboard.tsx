@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Application } from '@/lib/types';
 import AdvisoryPopover from '@/components/AdvisoryPopover';
+import WorkflowConfigModal from '@/components/WorkflowConfigModal';
 import {
   Search,
   Building2,
@@ -25,7 +26,8 @@ import {
   List,
   AlertCircle,
   GraduationCap,
-  ArrowRight
+  ArrowRight,
+  Sliders
 } from 'lucide-react';
 
 interface WorkflowDashboardProps {
@@ -56,6 +58,7 @@ export default function WorkflowDashboard({ onSelectApplication, onNavigate }: W
   const [selectedProgramFilter, setSelectedProgramFilter] = useState<string>('ALL');
   const [selectedDeficiencyFilter, setSelectedDeficiencyFilter] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [showWorkflowConfig, setShowWorkflowConfig] = useState(false);
 
   // Bulk actions selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -376,6 +379,14 @@ export default function WorkflowDashboard({ onSelectApplication, onNavigate }: W
             </button>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setShowWorkflowConfig(true)}
+          className="min-h-[44px] px-3.5 py-2 rounded-lg font-bold text-xs whitespace-nowrap flex items-center gap-1.5 bg-surface-container dark:bg-[#12264D] text-primary dark:text-[#FF9933] hover:bg-surface-container-high border border-primary/20 dark:border-[#FF9933]/30 transition-all ml-auto shrink-0"
+        >
+          <Sliders className="w-4 h-4" />
+          <span>Workflow Matrix</span>
+        </button>
       </div>
 
       {/* Search & Dropdown Filter Panel */}
@@ -807,6 +818,12 @@ export default function WorkflowDashboard({ onSelectApplication, onNavigate }: W
           </div>
         </div>
       )}
+
+      {/* Regulatory Workflow Engine Configuration Modal */}
+      <WorkflowConfigModal
+        isOpen={showWorkflowConfig}
+        onClose={() => setShowWorkflowConfig(false)}
+      />
     </div>
   );
 }

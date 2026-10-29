@@ -38,6 +38,9 @@ export interface CurrentUser {
   role: UserRole;
   roleLabel: string;
   email: string;
+  token?: string;
+  institutionId?: string;
+  region?: string;
 }
 
 interface AppContextType {
@@ -58,6 +61,8 @@ interface AppContextType {
   isAuthenticated: boolean;
   currentUser: CurrentUser | null;
   isHydrated: boolean;
+  dbStatus: 'connected' | 'connecting' | 'disconnected';
+  isSubmitting: boolean;
 
   // Feature 1: Working-Days Calendar
   workingCalendar: WorkingCalendarConfig;
@@ -79,7 +84,7 @@ interface AppContextType {
 
   // Feature 4: Deficiency Closure Tracker
   deficiencies: DeficiencyRecord[];
-  recordDeficiencyResponse: (deficiencyId: string, responseText: string, evidenceFileName: string) => void;
+  recordDeficiencyResponse: (deficiencyId: string, responseText: string, evidenceFileName: string) => Promise<{ success: boolean; error?: string }>;
   verifyDeficiency: (deficiencyId: string, decision: 'Accepted' | 'Query' | 'Rejected', remarks: string) => void;
   sendDeficiencyToHearing: (deficiencyId: string, hearingDate: string, hearingCommittee: string) => void;
   recordHearingOutcome: (deficiencyId: string, outcome: 'Closed' | 'Deficiency Maintained', remarks: string) => void;
@@ -104,18 +109,18 @@ interface AppContextType {
   resetSimulation: () => void;
   
   // Workflow Actions
-  moveToNextStage: (appId: string, nextStage: StageName, comments?: string) => { success: boolean; error?: string };
-  returnApplication: (appId: string, reason: string) => { success: boolean; error?: string };
-  recordStatutoryDecision: (appId: string, decision: 'Approved' | 'Rejected', orderDetails: string) => { success: boolean; error?: string };
+  moveToNextStage: (appId: string, nextStage: StageName, comments?: string) => Promise<{ success: boolean; error?: string }>;
+  returnApplication: (appId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
+  recordStatutoryDecision: (appId: string, decision: 'Approved' | 'Rejected', orderDetails: string) => Promise<{ success: boolean; error?: string }>;
   
   // EVC Actions
-  scheduleEVC: (appId: string, date: string, members: string[]) => { success: boolean; conflictWarning?: string };
+  scheduleEVC: (appId: string, date: string, members: string[]) => Promise<{ success: boolean; conflictWarning?: string; error?: string }>;
   resolveEVCConflict: (appId: string, replacementMember: string) => void;
-  completeEVCVisit: (appId: string, outcome: string) => void;
+  completeEVCVisit: (appId: string, outcome: string) => Promise<{ success: boolean; error?: string }>;
 
   // Undertakings Actions
-  submitUndertakingEvidence: (appId: string, undertakingId: string, fileName: string) => void;
-  verifyUndertaking: (appId: string, undertakingId: string, decision: 'Verified' | 'Query Raised' | 'Rejected', comments: string) => void;
+  submitUndertakingEvidence: (appId: string, undertakingId: string, fileName: string) => Promise<{ success: boolean; error?: string }>;
+  verifyUndertaking: (appId: string, undertakingId: string, decision: 'Verified' | 'Query Raised' | 'Rejected', comments: string) => Promise<{ success: boolean; error?: string }>;
 
   // Document & Expiry Actions
   proposeAndConfirmLeaseExpiry: (appId: string, newExpiryDate: string, confirmed: boolean) => void;
@@ -232,6 +237,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [overrideRole, setOverrideRole] = useState<UserRole | null>(null);
   const currentRole: UserRole = overrideRole || currentUser?.role || 'bureau_officer';
   const isAuthenticated = Boolean(currentUser && currentUser.userId);
+  const [dbStatus, setDbStatus] = useState<'connected' | 'connecting' | 'disconnected'>('connecting');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Verify backend connectivity and sync statutory settings from Supabase PostgreSQL
+  useEffect(() => {
+    let isMounted = true;
+    async function initBackend() {
+      try {
+        const [healthRes, settingsRes] = await Promise.all([
+          fetch('/api/health'),
+          fetch('/api/system-settings')
+        ]);
+
+        if (healthRes.ok) {
+          if (isMounted) setDbStatus('connected');
+        } else {
+          if (isMounted) setDbStatus('disconnected');
+        }
+
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          if (settingsData && settingsData.settings) {
+            const statutory = settingsData.settings.statutory_deadline as { day?: number; month?: number } | undefined;
+            if (statutory && statutory.day && statutory.month) {
+              const currentYear = new Date().getFullYear();
+              const formattedCutoff = `${currentYear}-${String(statutory.month).padStart(2, '0')}-${String(statutory.day).padStart(2, '0')}`;
+              if (isMounted) {
+                setCalendarConfig(prev => ({
+                  ...prev,
+                  cutoffDate: formattedCutoff
+                }));
+              }
+            }
+          }
+        }
+      } catch {
+        if (isMounted) setDbStatus('disconnected');
+      }
+    }
+
+    initBackend();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Synchronize document element class with theme changes
   useEffect(() => {
@@ -244,12 +294,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [theme]);
 
-  const login = (userId: string, role: UserRole, roleLabel?: string, email?: string) => {
-    const user: CurrentUser = {
+  const login = async (userId: string, role: UserRole, roleLabel?: string, email?: string) => {
+    let token: string | undefined;
+    let resolvedUser = {
       userId,
       role,
       roleLabel: roleLabel || role,
-      email: email || `${userId.toLowerCase()}@aicte-india.org`
+      email: email || `${userId.toLowerCase()}@aicte-india.org`,
+      institutionId: undefined as string | undefined,
+      region: undefined as string | undefined
+    };
+
+    try {
+      const res = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, role, email })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.token) {
+          token = data.token;
+          resolvedUser = {
+            userId: data.user.userId || userId,
+            role: (data.user.role as UserRole) || role,
+            roleLabel: roleLabel || data.user.roleLabel || role,
+            email: data.user.email || email || `${userId.toLowerCase()}@aicte-india.org`,
+            institutionId: data.user.institutionId,
+            region: data.user.region
+          };
+        }
+      }
+    } catch {
+      // Offline fallback
+    }
+
+    const user: CurrentUser = {
+      ...resolvedUser,
+      token
     };
     setOverrideRole(null);
     authStore.setAuth(user);
@@ -259,6 +341,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setOverrideRole(null);
     authStore.setAuth(null);
   };
+
+  const handleSetRole = (role: UserRole) => {
+    setOverrideRole(role);
+    if (currentUser?.userId) {
+      fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.userId, role, email: currentUser.email })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.token) {
+            authStore.setAuth({
+              ...currentUser,
+              role,
+              token: data.token,
+              institutionId: data.user?.institutionId,
+              region: data.user?.region
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  };
+
+  // Acquire token for existing local session if token is missing
+  useEffect(() => {
+    if (currentUser?.userId && !currentUser.token) {
+      fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.userId, role: currentUser.role, email: currentUser.email })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.token) {
+            authStore.setAuth({
+              ...currentUser,
+              token: data.token,
+              institutionId: data.user?.institutionId || currentUser.institutionId,
+              region: data.user?.region || currentUser.region
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentUser]);
 
   const setTheme = (newTheme: 'light' | 'dark') => {
     themeStore.setTheme(newTheme);
@@ -479,7 +608,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Move application to next stage with guard conditions
-  const moveToNextStage = (appId: string, nextStage: StageName, comments: string = '') => {
+  const moveToNextStage = async (appId: string, nextStage: StageName, comments: string = ''): Promise<{ success: boolean; error?: string }> => {
     const app = applications.find(a => a.id === appId);
     if (!app) return { success: false, error: 'Application not found' };
 
@@ -490,6 +619,69 @@ export function AppProvider({ children }: { children: ReactNode }) {
           success: false,
           error: 'Statutory Safeguard Violation (FR-A7): Final Grant / Rejection decisions can ONLY be taken by the Competent AICTE Authority.'
         };
+      }
+    }
+
+    if (currentUser?.token) {
+      setIsSubmitting(true);
+      try {
+        const stageMap: Record<string, string> = {
+          'Submitted': 'submitted',
+          'Scrutiny': 'under_scrutiny',
+          'Deficiency Return': 'deficiency_raised',
+          'Returned to Institution': 'deficiency_raised',
+          'EVC': 'ready_for_evc',
+          'Decision Pending': 'under_final_review',
+          'Approved': 'approved',
+          'Rejected': 'rejected'
+        };
+        const apiStage = stageMap[nextStage] || nextStage.toLowerCase().replace(/ /g, '_');
+        const res = await fetch(`/api/applications/${encodeURIComponent(appId)}/transition`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({
+            targetStage: apiStage,
+            remarks: comments
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData.error || `Server rejected transition (${res.status})`;
+          triggerAlert(
+            `ERR_TRANSITION_${appId}_${Date.now()}`,
+            appId,
+            app.institutionName,
+            app.region,
+            'Stage Overdue',
+            currentRole,
+            getActorNameForRole(currentRole),
+            'Workflow Transition Rejected by AICTE Engine',
+            errMsg,
+            1
+          );
+          return { success: false, error: errMsg };
+        }
+      } catch (networkErr) {
+        const errMsg = networkErr instanceof Error ? networkErr.message : 'Network failure during transition';
+        triggerAlert(
+          `ERR_NET_TRANSITION_${appId}_${Date.now()}`,
+          appId,
+          app.institutionName,
+          app.region,
+          'Stage Overdue',
+          currentRole,
+          getActorNameForRole(currentRole),
+          'Transition Failed: Network Error',
+          errMsg,
+          1
+        );
+        return { success: false, error: errMsg };
+      } finally {
+        setIsSubmitting(false);
       }
     }
 
@@ -531,13 +723,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Return/revert application to earlier stage or institution with mandatory reason
-  const returnApplication = (appId: string, reason: string) => {
+  const returnApplication = async (appId: string, reason: string): Promise<{ success: boolean; error?: string }> => {
     if (!reason || reason.trim().length < 5) {
       return { success: false, error: 'Mandatory Reason Required: A detailed deficiency explanation must be recorded.' };
     }
 
     const app = applications.find(a => a.id === appId);
     if (!app) return { success: false, error: 'Application not found' };
+
+    if (currentUser?.token) {
+      setIsSubmitting(true);
+      try {
+        const res = await fetch(`/api/applications/${encodeURIComponent(appId)}/deficiency`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({
+            title: 'Deficiency Return',
+            description: reason,
+            severity: 'high'
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData.error || `Server rejected return request (${res.status})`;
+          triggerAlert(
+            `ERR_RETURN_${appId}_${Date.now()}`,
+            appId,
+            app.institutionName,
+            app.region,
+            'Stage Overdue',
+            currentRole,
+            getActorNameForRole(currentRole),
+            'Deficiency Return Rejected',
+            errMsg,
+            1
+          );
+          return { success: false, error: errMsg };
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Network error during deficiency return';
+        return { success: false, error: errMsg };
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
 
     setRawApplications(prev =>
       prev.map(item => {
@@ -602,7 +835,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Final statutory decision
-  const recordStatutoryDecision = (appId: string, decision: 'Approved' | 'Rejected', orderDetails: string) => {
+  const recordStatutoryDecision = async (appId: string, decision: 'Approved' | 'Rejected', orderDetails: string): Promise<{ success: boolean; error?: string }> => {
     if (currentRole !== 'competent_authority') {
       return {
         success: false,
@@ -612,6 +845,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const app = applications.find(a => a.id === appId);
     if (!app) return { success: false, error: 'Application not found' };
+
+    if (currentUser?.token) {
+      setIsSubmitting(true);
+      try {
+        const res = await fetch(`/api/applications/${encodeURIComponent(appId)}/transition`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({
+            targetStage: decision.toLowerCase(),
+            remarks: orderDetails
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData.error || `Server rejected decision (${res.status})`;
+          triggerAlert(
+            `ERR_DECISION_${appId}_${Date.now()}`,
+            appId,
+            app.institutionName,
+            app.region,
+            'Stage Overdue',
+            currentRole,
+            getActorNameForRole(currentRole),
+            'Statutory Decision Failed',
+            errMsg,
+            1
+          );
+          return { success: false, error: errMsg };
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Network error during statutory decision';
+        return { success: false, error: errMsg };
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
 
     setRawApplications(prev =>
       prev.map(item => {
@@ -649,8 +922,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Schedule EVC with conflict detection
-  const scheduleEVC = (appId: string, date: string, members: string[]) => {
-    // Check if any member has another scheduled visit on the exact same date
+  const scheduleEVC = async (appId: string, date: string, members: string[]): Promise<{ success: boolean; conflictWarning?: string; error?: string }> => {
     let conflictFound = false;
     let conflictWarning = '';
 
@@ -662,6 +934,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
           conflictWarning = `Scheduling Conflict Detected: Committee member "${overlappingMember}" is already booked on ${date} for "${app.institutionName}" (${app.region} Region).`;
           break;
         }
+      }
+    }
+
+    if (currentUser?.token) {
+      setIsSubmitting(true);
+      try {
+        const res = await fetch('/api/evc', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({
+            applicationId: appId,
+            scheduledDate: date,
+            committeeMembers: members
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData.error || `Server rejected EVC scheduling (${res.status})`;
+          return { success: false, error: errMsg };
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Network error during EVC scheduling';
+        return { success: false, error: errMsg };
+      } finally {
+        setIsSubmitting(false);
       }
     }
 
@@ -735,7 +1036,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Complete EVC visit
-  const completeEVCVisit = (appId: string, outcome: string) => {
+  const completeEVCVisit = async (appId: string, outcome: string): Promise<{ success: boolean; error?: string }> => {
+    if (currentUser?.token) {
+      setIsSubmitting(true);
+      try {
+        const res = await fetch(`/api/evc/${encodeURIComponent(appId)}/complete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({ outcome })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          return { success: false, error: errData.error || 'Server rejected EVC completion' };
+        }
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+
     setRawApplications(prev =>
       prev.map(item => {
         if (item.id !== appId || !item.evc) return item;
@@ -762,10 +1085,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       appId,
       `EVC Inspection completed. Report uploaded: "${outcome}". Moving to Decision Pending stage.`
     );
+
+    return { success: true };
   };
 
   // Submit Undertaking Evidence
-  const submitUndertakingEvidence = (appId: string, undertakingId: string, fileName: string) => {
+  const submitUndertakingEvidence = async (appId: string, undertakingId: string, fileName: string): Promise<{ success: boolean; error?: string }> => {
+    if (currentUser?.token) {
+      setIsSubmitting(true);
+      try {
+        const res = await fetch('/api/undertakings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({
+            applicationId: appId,
+            undertakingType: 'compliance',
+            evidenceFileName: fileName
+          })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          return { success: false, error: errData.error || 'Failed to submit evidence' };
+        }
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+
     setRawApplications(prev =>
       prev.map(item => {
         if (item.id !== appId) return item;
@@ -796,15 +1147,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
       undertakingId,
       `Evidence "${fileName}" uploaded for institutional undertaking condition by institute.`
     );
+
+    return { success: true };
   };
 
   // Verify Undertaking
-  const verifyUndertaking = (
+  const verifyUndertaking = async (
     appId: string,
     undertakingId: string,
     decision: 'Verified' | 'Query Raised' | 'Rejected',
     comments: string
-  ) => {
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (currentUser?.token) {
+      setIsSubmitting(true);
+      try {
+        const decisionMap: Record<string, string> = {
+          'Verified': 'verified',
+          'Query Raised': 'rejected',
+          'Rejected': 'rejected'
+        };
+        const res = await fetch(`/api/undertakings/${encodeURIComponent(undertakingId)}/verify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({
+            decision: decisionMap[decision] || 'verified',
+            comments
+          })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          return { success: false, error: errData.error || 'Failed to record verification' };
+        }
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
     setRawApplications(prev =>
       prev.map(item => {
         if (item.id !== appId) return item;
@@ -836,6 +1218,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       undertakingId,
       `Officer recorded verification verdict: ${decision}. Remarks: ${comments}`
     );
+
+    return { success: true };
   };
 
   // Propose & Confirm Lease Expiry (AI OCR demo)
@@ -1206,7 +1590,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [simulatedDate, deficiencies, triggerAlert]);
 
-  const recordDeficiencyResponse = (deficiencyId: string, responseText: string, evidenceFileName: string) => {
+  const recordDeficiencyResponse = async (deficiencyId: string, responseText: string, evidenceFileName: string): Promise<{ success: boolean; error?: string }> => {
+    if (currentUser?.token) {
+      setIsSubmitting(true);
+      try {
+        const res = await fetch(`/api/applications/${encodeURIComponent(deficiencyId)}/deficiency`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({
+            deficiencyId,
+            responseText,
+            evidenceFileName
+          })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          return { success: false, error: errData.error || 'Server rejected deficiency response' };
+        }
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
     setDeficiencies(prev =>
       prev.map(d => {
         if (d.id === deficiencyId) {
@@ -1237,6 +1646,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deficiencyId,
       `Rectification response submitted for deficiency ${deficiencyId}. Evidence document: "${evidenceFileName}". Remarks: "${responseText}".`
     );
+
+    return { success: true };
   };
 
   const verifyDeficiency = (deficiencyId: string, decision: 'Accepted' | 'Query' | 'Rejected', remarks: string) => {
@@ -1440,6 +1851,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const result = await adapter.importApplications(csvContent);
     if (result.validRecords.length > 0) {
+      if (currentUser?.token) {
+        fetch('/api/data-import', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`
+          },
+          body: JSON.stringify({
+            csvContent,
+            fileName
+          })
+        }).catch(err => console.warn('[API Data Import Error]:', err));
+      }
       setRawApplications(prev => {
         const existingIds = new Set(prev.map(a => a.id));
         const newApps: Application[] = result.validRecords
@@ -1551,9 +1975,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         currentUser,
         isHydrated,
+        dbStatus,
+        isSubmitting,
         login,
         logout,
-        setRole: setOverrideRole,
+        setRole: handleSetRole,
         setRegion: setCurrentRegion,
         setLanguage,
         setSelectedAppId,

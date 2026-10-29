@@ -32,7 +32,8 @@ export default function EVCManagementView({ onSelectApplication }: EVCManagement
     currentRegion,
     scheduleEVC,
     resolveEVCConflict,
-    completeEVCVisit
+    completeEVCVisit,
+    isSubmitting
   } = useApp();
 
   const [selectedAppForSchedule, setSelectedAppForSchedule] = useState<Application | null>(null);
@@ -53,13 +54,15 @@ export default function EVCManagementView({ onSelectApplication }: EVCManagement
   const conflictsCount = evcApps.filter(a => a.evc?.hasConflict).length;
   const unscheduledCount = evcApps.filter(a => a.currentStage === 'EVC' && a.evc?.status === 'Not Scheduled').length;
 
-  const handleScheduleSubmit = (e: React.FormEvent) => {
+  const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAppForSchedule) return;
+    if (!selectedAppForSchedule || isSubmitting) return;
 
-    const res = scheduleEVC(selectedAppForSchedule.id, scheduleDate, [member1, member2]);
+    const res = await scheduleEVC(selectedAppForSchedule.id, scheduleDate, [member1, member2]);
     if (res.conflictWarning) {
       setConflictWarning(res.conflictWarning);
+    } else if (!res.success && res.error) {
+      setConflictWarning(res.error);
     } else {
       setSuccessMsg(`EVC Scheduled for ${selectedAppForSchedule.institutionName} on ${scheduleDate}`);
       setSelectedAppForSchedule(null);
@@ -75,14 +78,18 @@ export default function EVCManagementView({ onSelectApplication }: EVCManagement
     setTimeout(() => setSuccessMsg(''), 4000);
   };
 
-  const handleCompleteVisit = (e: React.FormEvent) => {
+  const handleCompleteVisit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAppForOutcome) return;
+    if (!selectedAppForOutcome || isSubmitting) return;
 
-    completeEVCVisit(selectedAppForOutcome.id, outcomeReport);
-    setSuccessMsg(`EVC Inspection report recorded. Moving to Decision Pending.`);
-    setSelectedAppForOutcome(null);
-    setTimeout(() => setSuccessMsg(''), 4000);
+    const res = await completeEVCVisit(selectedAppForOutcome.id, outcomeReport);
+    if (!res.success && res.error) {
+      setConflictWarning(res.error);
+    } else {
+      setSuccessMsg(`EVC Inspection report recorded. Moving to Decision Pending.`);
+      setSelectedAppForOutcome(null);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    }
   };
 
   return (

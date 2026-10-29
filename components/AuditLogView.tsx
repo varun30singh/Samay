@@ -24,12 +24,18 @@ export default function AuditLogView() {
     isTampered,
     simulateAuditTampering,
     restoreAuditIntegrity,
-    simulatedDate
+    simulatedDate,
+    currentUser
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAction, setFilterAction] = useState('ALL');
   const [verifyState, setVerifyState] = useState<'idle' | 'success' | 'failed'>('idle');
+  const [serverVerification, setServerVerification] = useState<{
+    verified: boolean;
+    totalBlocks: number;
+    message: string;
+  } | null>(null);
 
   const filteredEntries = auditLog.filter((entry) => {
     if (searchQuery.trim()) {
@@ -44,7 +50,28 @@ export default function AuditLogView() {
     return true;
   });
 
-  const handleManualVerify = () => {
+  const handleManualVerify = async () => {
+    if (currentUser?.token) {
+      try {
+        const res = await fetch('/api/audit/verify', {
+          headers: { Authorization: `Bearer ${currentUser.token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setServerVerification({
+            verified: data.verified,
+            totalBlocks: data.totalBlocks,
+            message: data.message
+          });
+          setVerifyState(data.verified ? 'success' : 'failed');
+          setTimeout(() => setVerifyState('idle'), 5000);
+          return;
+        }
+      } catch {
+        // fallback to client verification
+      }
+    }
+
     if (chainIntegrity.isValid) {
       setVerifyState('success');
     } else {
@@ -123,7 +150,11 @@ export default function AuditLogView() {
               {verifyState === 'success' ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-yellow-300" strokeWidth={2} />
-                  <span>Chain Verified Valid ({auditLog.length} Blocks)</span>
+                  <span>
+                    {serverVerification
+                      ? `PostgreSQL Ledger Verified (${serverVerification.totalBlocks} Blocks)`
+                      : `Chain Verified Valid (${auditLog.length} Blocks)`}
+                  </span>
                 </>
               ) : verifyState === 'failed' ? (
                 <>

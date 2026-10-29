@@ -36,7 +36,8 @@ export default function ApplicationDetailModal({
     calendarConfig,
     moveToNextStage,
     returnApplication,
-    recordStatutoryDecision
+    recordStatutoryDecision,
+    isSubmitting
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'checklist' | 'summary' | 'history' | 'actions'>('overview');
@@ -125,10 +126,10 @@ export default function ApplicationDetailModal({
 
   const nextStage = getNextStageOption();
 
-  const handleNextStage = () => {
-    if (!nextStage) return;
+  const handleNextStage = async () => {
+    if (!nextStage || isSubmitting) return;
     setErrorMessage('');
-    const res = moveToNextStage(application.id, nextStage);
+    const res = await moveToNextStage(application.id, nextStage);
     if (!res.success) {
       setErrorMessage(res.error || 'Failed to move stage');
     } else {
@@ -137,13 +138,14 @@ export default function ApplicationDetailModal({
     }
   };
 
-  const handleReturn = () => {
+  const handleReturn = async () => {
+    if (isSubmitting) return;
     setErrorMessage('');
     if (!returnReason.trim()) {
       setErrorMessage('A mandatory deficiency reason must be provided before returning the application.');
       return;
     }
-    const res = returnApplication(application.id, returnReason);
+    const res = await returnApplication(application.id, returnReason);
     if (!res.success) {
       setErrorMessage(res.error || 'Failed to return application');
     } else {
@@ -154,9 +156,10 @@ export default function ApplicationDetailModal({
     }
   };
 
-  const handleStatutoryDecision = (decision: 'Approved' | 'Rejected') => {
+  const handleStatutoryDecision = async (decision: 'Approved' | 'Rejected') => {
+    if (isSubmitting) return;
     setErrorMessage('');
-    const res = recordStatutoryDecision(application.id, decision, decisionOrder);
+    const res = await recordStatutoryDecision(application.id, decision, decisionOrder);
     if (!res.success) {
       setErrorMessage(res.error || 'Statutory authority error');
     } else {

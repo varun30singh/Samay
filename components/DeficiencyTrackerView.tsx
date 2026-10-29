@@ -25,7 +25,8 @@ export default function DeficiencyTrackerView() {
     escalateDeficiency,
     simulatedDate,
     currentRole,
-    currentRegion
+    currentRegion,
+    isSubmitting
   } = useApp();
 
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'OPEN' | 'OVERDUE' | 'HEARING' | 'CLOSED'>('ALL');
@@ -83,21 +84,24 @@ export default function DeficiencyTrackerView() {
     setTimeout(() => setStatusNotice(''), 4000);
   };
 
-  const handleSubmitInstitutionResponse = (e: React.FormEvent) => {
+  const handleSubmitInstitutionResponse = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDeficiency) return;
+    if (!selectedDeficiency || isSubmitting) return;
     if (!responseText.trim() || !evidenceFileName.trim()) return;
 
-    recordDeficiencyResponse(selectedDeficiency.id, responseText.trim(), evidenceFileName.trim());
-    setShowResponseModal(false);
-    setResponseText('');
-    setEvidenceFileName('');
-    setStatusNotice(`Rectification response submitted for ${selectedDeficiency.id}. Under officer verification.`);
+    const res = await recordDeficiencyResponse(selectedDeficiency.id, responseText.trim(), evidenceFileName.trim());
+    if (!res.success && res.error) {
+      setStatusNotice(`Failed to submit: ${res.error}`);
+    } else {
+      setShowResponseModal(false);
+      setResponseText('');
+      setEvidenceFileName('');
+      setStatusNotice(`Rectification response submitted for ${selectedDeficiency.id}. Under officer verification.`);
+      // Refresh selected deficiency from updated state
+      const updated = deficiencies.find(d => d.id === selectedDeficiency.id);
+      if (updated) setSelectedDeficiency(updated);
+    }
     setTimeout(() => setStatusNotice(''), 5000);
-
-    // Refresh selected deficiency from updated state
-    const updated = deficiencies.find(d => d.id === selectedDeficiency.id);
-    if (updated) setSelectedDeficiency(updated);
   };
 
   const handleOfficerVerify = (decision: 'Accepted' | 'Query' | 'Rejected') => {

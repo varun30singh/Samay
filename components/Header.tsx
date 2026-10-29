@@ -46,7 +46,8 @@ export default function Header({
     theme,
     toggleTheme,
     logout,
-    setRole
+    setRole,
+    dbStatus
   } = useApp();
 
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
@@ -122,6 +123,31 @@ export default function Header({
           >
             <Search className="w-4 h-4 text-primary dark:text-[#FF9933]" />
           </button>
+
+          {/* Live Supabase Database Health Badge */}
+          <div
+            className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
+              dbStatus === 'connected'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-700/60'
+                : dbStatus === 'connecting'
+                ? 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-700/60'
+                : 'bg-red-50 text-red-800 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-700/60'
+            }`}
+            title={`Database Status: ${dbStatus === 'connected' ? 'Connected to Supabase PostgreSQL' : dbStatus}`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                dbStatus === 'connected'
+                  ? 'bg-emerald-500 animate-pulse'
+                  : dbStatus === 'connecting'
+                  ? 'bg-amber-500 animate-spin'
+                  : 'bg-red-500'
+              }`}
+            />
+            <span className="font-mono text-[10px]">
+              {dbStatus === 'connected' ? 'PostgreSQL' : dbStatus === 'connecting' ? 'Connecting...' : 'Offline'}
+            </span>
+          </div>
 
           {/* Theme Toggle Button */}
           <button

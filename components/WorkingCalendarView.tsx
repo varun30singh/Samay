@@ -5,7 +5,7 @@ import { useApp } from '@/context/AppContext';
 import { Calendar, Plus, Trash2, Save, CheckCircle2, AlertCircle, Info, Clock, ShieldCheck } from 'lucide-react';
 
 export default function WorkingCalendarView() {
-  const { workingCalendar, updateWorkingCalendar, addHoliday, removeHoliday } = useApp();
+  const { workingCalendar, updateWorkingCalendar, addHoliday, removeHoliday, dbStatus } = useApp();
 
   const [weeklySunday, setWeeklySunday] = useState(workingCalendar.weeklyOffSunday);
   const [weeklySecondFourthSat, setWeeklySecondFourthSat] = useState(workingCalendar.weeklyOffSecondFourthSaturday);
@@ -71,15 +71,29 @@ export default function WorkingCalendarView() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 bg-surface-container dark:bg-[#09162F] px-3.5 py-2 rounded-xl border border-[#CFE3D3] dark:border-[#2B4478] shrink-0">
-            <ShieldCheck className="w-4 h-4 text-primary dark:text-[#FF9933]" />
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant dark:text-[#B8C5E0]">
-                Active Config Version
-              </span>
-              <span className="text-xs font-mono font-bold text-primary dark:text-[#FF9933]">
-                {workingCalendar.version}
-              </span>
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 bg-surface-container dark:bg-[#09162F] px-3.5 py-2 rounded-xl border border-[#CFE3D3] dark:border-[#2B4478] shrink-0">
+              <span className={`w-2 h-2 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus === 'connecting' ? 'bg-amber-500' : 'bg-red-500'}`} />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant dark:text-[#B8C5E0]">
+                  Database
+                </span>
+                <span className="text-xs font-mono font-bold text-primary dark:text-[#FF9933]">
+                  {dbStatus === 'connected' ? 'Supabase PG' : dbStatus === 'connecting' ? 'Connecting...' : 'Local Cache'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 bg-surface-container dark:bg-[#09162F] px-3.5 py-2 rounded-xl border border-[#CFE3D3] dark:border-[#2B4478] shrink-0">
+              <ShieldCheck className="w-4 h-4 text-primary dark:text-[#FF9933]" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant dark:text-[#B8C5E0]">
+                  Active Config Version
+                </span>
+                <span className="text-xs font-mono font-bold text-primary dark:text-[#FF9933]">
+                  {workingCalendar.version}
+                </span>
+              </div>
             </div>
           </div>
         </div>

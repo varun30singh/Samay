@@ -18,7 +18,8 @@ export default function UndertakingsView({ onSelectApplication }: UndertakingsVi
     applications,
     currentRegion,
     submitUndertakingEvidence,
-    verifyUndertaking
+    verifyUndertaking,
+    isSubmitting
   } = useApp();
 
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
@@ -39,21 +40,29 @@ export default function UndertakingsView({ onSelectApplication }: UndertakingsVi
     });
   });
 
-  const handleUploadSubmit = (e: React.FormEvent) => {
+  const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedForUpload) return;
-    submitUndertakingEvidence(selectedForUpload.app.id, selectedForUpload.item.id, uploadFileName);
-    setMsg(`Evidence "${uploadFileName}" uploaded for ${selectedForUpload.app.institutionName}`);
-    setSelectedForUpload(null);
+    if (!selectedForUpload || isSubmitting) return;
+    const res = await submitUndertakingEvidence(selectedForUpload.app.id, selectedForUpload.item.id, uploadFileName);
+    if (!res.success && res.error) {
+      setMsg(`Upload failed: ${res.error}`);
+    } else {
+      setMsg(`Evidence "${uploadFileName}" uploaded for ${selectedForUpload.app.institutionName}`);
+      setSelectedForUpload(null);
+    }
     setTimeout(() => setMsg(''), 4000);
   };
 
-  const handleVerifySubmit = (e: React.FormEvent) => {
+  const handleVerifySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedForVerify) return;
-    verifyUndertaking(selectedForVerify.app.id, selectedForVerify.item.id, verifyDecision, verifyComments);
-    setMsg(`Verification verdict recorded: ${verifyDecision} for ${selectedForVerify.app.institutionName}`);
-    setSelectedForVerify(null);
+    if (!selectedForVerify || isSubmitting) return;
+    const res = await verifyUndertaking(selectedForVerify.app.id, selectedForVerify.item.id, verifyDecision, verifyComments);
+    if (!res.success && res.error) {
+      setMsg(`Verification failed: ${res.error}`);
+    } else {
+      setMsg(`Verification verdict recorded: ${verifyDecision} for ${selectedForVerify.app.institutionName}`);
+      setSelectedForVerify(null);
+    }
     setTimeout(() => setMsg(''), 4000);
   };
 
