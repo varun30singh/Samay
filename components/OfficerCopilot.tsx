@@ -5,6 +5,12 @@ import { useApp } from '@/context/AppContext';
 import AdvisoryPopover from '@/components/AdvisoryPopover';
 import CuteRobotIcon from '@/components/CuteRobotIcon';
 import {
+  getRandomQuestions,
+  findBestMatchingQuestion,
+  getChatbotQuestionsCount,
+  ChatbotQuestion
+} from '@/lib/chatbotService';
+import {
   Send,
   Sparkles,
   BookOpen,
@@ -13,7 +19,8 @@ import {
   Maximize2,
   RotateCcw,
   ExternalLink,
-  Compass
+  Compass,
+  Shuffle
 } from 'lucide-react';
 
 interface CopilotMessage {
@@ -54,13 +61,17 @@ export default function OfficerCopilot({
     {
       id: 'msg-welcome',
       sender: 'copilot',
-      text: 'Welcome! I am SAMAY. I analyze live applications, APH clauses, and cryptographic audit logs to provide instant advisory answers with legal citations. How may I assist you today?',
+      text: 'Welcome! I am SAMAY. I analyze live applications, APH clauses, and cryptographic audit logs to provide instant advisory answers with legal citations. Over 5,000 predefined statutory questions are indexed in my regulatory knowledge base. How may I assist you today?',
       timestamp: 'Just now',
-      references: ['AICTE Approval Process Handbook 2024-27', 'Cryptographic Audit Ledger']
+      references: ['AICTE Approval Process Handbook 2024-27', 'Cryptographic Audit Ledger', '5,000+ Predefined Questions Bank']
     }
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 5,000 Predefined Questions Pool - Dynamic rotation
+  const totalQuestionsCount = getChatbotQuestionsCount();
+  const [currentPrompts, setCurrentPrompts] = useState<ChatbotQuestion[]>(() => getRandomQuestions(6));
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -72,32 +83,23 @@ export default function OfficerCopilot({
     }
   }, [messages, isOpen]);
 
-  const quickPrompts = [
-    {
-      label: 'Why Shivaji Inst flagged Will Miss?',
-      query: 'Why is Shivaji Institute of Technology flagged as Will Miss?'
-    },
-    {
-      label: '30 April Cutoff Legal Basis',
-      query: 'What is the statutory legal basis for the 30 April approval cutoff date?'
-    },
-    {
-      label: 'EVC Double-Booking Conflicts',
-      query: 'Are there any EVC member double-booking conflicts currently detected?'
-    },
-    {
-      label: 'Lease Deed Validity Norms',
-      query: 'What are the AICTE rules for registered land lease expiration before EoA?'
-    },
-    {
-      label: 'Current Risk Summary',
-      query: 'Give me a live status summary of at-risk applications across all regions.'
-    }
-  ];
+  // Rotate questions manually or automatically
+  const cycleNewPrompts = useCallback(() => {
+    setCurrentPrompts(prev => {
+      const prevIds = prev.map(p => p.id);
+      return getRandomQuestions(6, prevIds);
+    });
+  }, []);
 
   const handleSend = useCallback((textToSend?: string) => {
     const query = textToSend || input;
     if (!query.trim()) return;
+
+    // RULE: After EVERY question is asked, the predefined questions MUST be changed!
+    setCurrentPrompts(prev => {
+      const prevIds = prev.map(p => p.id);
+      return getRandomQuestions(6, prevIds);
+    });
 
     const timestamp = Date.now();
     const userMsg: CopilotMessage = {
@@ -117,6 +119,7 @@ export default function OfficerCopilot({
       let refs: string[] = [];
       let actionLink: { label: string; tab?: string; appId?: string } | undefined = undefined;
 
+      // 1. Specific demo application bottlenecks (Shivaji, EVC conflict)
       if (q.includes('shivaji') || q.includes('will miss')) {
         const shivaji = applications.find(a => a.id === 'APP-2026-W-1001');
         const leaseDoc = shivaji?.documents.find(d => d.type === 'Land Lease Deed');
@@ -126,14 +129,7 @@ export default function OfficerCopilot({
           label: 'Open Shivaji Institute Detail & Fix-It Checklist',
           appId: 'APP-2026-W-1001'
         };
-      } else if (q.includes('cutoff') || q.includes('30 april') || q.includes('legal basis')) {
-        responseText = `The **30th April cutoff** is a statutory binding deadline mandated by the Hon'ble Supreme Court of India in landmark judgements (e.g., *Parshvanath Charitable Trust & Ors vs AICTE, Civil Appeal No. 9048 of 2012*).\n\nKey Legal Principles:\n- AICTE has **zero discretion** to issue Extensions of Approval (EoA) or intake approvals past 30 April for the upcoming academic session.\n- SAMAY's **Deadline Guard backwards planner** starts from 30 April and reverses stage SLAs (EVC 14d, Scrutiny 10d, SHC 7d, SAC 5d) to establish non-negotiable drop-dead dates.\n- If an application lags past its stage buffer, it transitions to "Tight" and then "Will miss at current pace".`;
-        refs = ['Supreme Court Parshvanath Judgement (2012)', 'APH Chapter I Clause 1.4', 'AICTE Act 1987 § 10(k)'];
-        actionLink = {
-          label: 'Open Deadline Guard Backwards Simulator',
-          tab: 'deadline-guard'
-        };
-      } else if (q.includes('conflict') || q.includes('double') || q.includes('evc')) {
+      } else if (q.includes('conflict') || q.includes('double') || (q.includes('evc') && q.includes('member'))) {
         const conflictApp = applications.find(a => a.evc?.hasConflict);
         if (conflictApp) {
           responseText = `Yes, an active double-booking conflict is detected:\n\n**Prof. Ramesh Kulkarni (IIT Bombay)** is assigned on the exact same date (**2026-03-05**) to two separate physical visits:\n1. **Vishwakarma Institute of Advanced Technology** (APP-2026-W-1002, Pune)\n2. **Pune Metropolitan Engineering College** (APP-2026-W-1003, Pune)\n\nUnder APH Clause 3.6, committee members must be dedicated full-day per visit. SAMAY recommends auto-rebalancing to assign **Prof. Sneha Deshmukh (VNIT Nagpur)** to APP-2026-W-1003.`;
@@ -146,23 +142,32 @@ export default function OfficerCopilot({
           responseText = `Currently no active EVC scheduling conflicts are detected. All scheduled committee members have unique dates and valid geographic travel buffers.`;
           refs = ['EVC Real-Time Quorum Engine', 'APH Clause 3.6'];
         }
-      } else if (q.includes('lease') || q.includes('land')) {
-        responseText = `Under **APH Chapter II, Clause 2.11**, technical institutions operating on leased property must satisfy:\n\n- Minimum lease duration: **30 years** from the date of registration (or minimum remaining 5 years beyond current academic approval cycle).\n- **Mandatory Registration**: Unregistered or notarized-only agreements are not acceptable.\n- **Expiration Buffer**: If a lease expires within 6 months of the academic session start, approval is withheld until an official registered renewal deed is uploaded.\n\nUse the **Smart OCR Lease Extractor** to extract Clause 4.2 expiration dates automatically with 98.4% confidence.`;
-        refs = ['APH Chapter II Clause 2.11', 'Standing Hearing Committee Circular 2018', 'OCR Legal Parser v2.1'];
-        actionLink = {
-          label: 'Open Lease Radar & Smart OCR Extractor',
-          tab: 'lease-radar'
-        };
-      } else if (q.includes('summary') || q.includes('risk') || q.includes('status')) {
-        const willMiss = applications.filter(a => a.riskStatus === 'Will miss at current pace');
-        const tight = applications.filter(a => a.riskStatus === 'Tight');
-        const onTrack = applications.filter(a => a.riskStatus === 'On track');
-
-        responseText = `**SAMAY Live Institutional Risk Summary** (Clock: ${simulatedDate}):\n\n- **Total Applications**: ${applications.length}\n- **On Track**: ${onTrack.length} (${Math.round((onTrack.length / applications.length) * 100)}%)\n- **Tight**: ${tight.length} (Requires close monitoring)\n- **Will Miss at Current Pace**: ${willMiss.length} (${willMiss.map(a => a.institutionName).join(', ')})\n\nStatutory Cutoff: **${calendarConfig.approvalCutoffDate}**\nSHA-256 Ledger: **${auditLog.length} chained blocks intact**.`;
-        refs = ['SAMAY Real-Time Database', 'APH Ruleset 2026.v1.4', 'SHA-256 Block Chain'];
       } else {
-        responseText = `Based on current live records:\n\n- Active applications in workflow: **${applications.length}**\n- High-risk institutions flagged: **${applications.filter(a => a.riskStatus === 'Will miss at current pace').length}**\n- Statutory Supreme Court cutoff: **${calendarConfig.approvalCutoffDate}**\n- Audit Ledger status: **${auditLog.length} chained blocks** with verified cryptographic integrity.\n\nYou can ask about specific institutions, Supreme Court deadlines, quorum guidelines, or simulate cutoff scenarios.`;
-        refs = ['AICTE Approval Process Handbook 2024-27', 'Cryptographic Audit Trail'];
+        // 2. Query the 5,000 Predefined Questions Knowledge Bank
+        const matchResult = findBestMatchingQuestion(query);
+        if (matchResult && matchResult.score >= 0.12) {
+          const matched = matchResult.question;
+          responseText = `**${matched.topic} · ${matched.discipline}**\n\n${matched.answer}\n\n*Statutory Domain: ${matched.category} · Territory: ${matched.region} (AICTE Q-ID: ${matched.id})*`;
+          refs = matched.references;
+          actionLink = matched.actionLink;
+        } else if (q.includes('cutoff') || q.includes('30 april') || q.includes('legal basis')) {
+          responseText = `The **30th April cutoff** is a statutory binding deadline mandated by the Hon'ble Supreme Court of India in landmark judgements (e.g., *Parshvanath Charitable Trust & Ors vs AICTE, Civil Appeal No. 9048 of 2012*).\n\nKey Legal Principles:\n- AICTE has **zero discretion** to issue Extensions of Approval (EoA) or intake approvals past 30 April for the upcoming academic session.\n- SAMAY's **Deadline Guard backwards planner** starts from 30 April and reverses stage SLAs (EVC 14d, Scrutiny 10d, SHC 7d, SAC 5d) to establish non-negotiable drop-dead dates.\n- If an application lags past its stage buffer, it transitions to "Tight" and then "Will miss at current pace".`;
+          refs = ['Supreme Court Parshvanath Judgement (2012)', 'APH Chapter I Clause 1.4', 'AICTE Act 1987 § 10(k)'];
+          actionLink = {
+            label: 'Open Deadline Guard Backwards Simulator',
+            tab: 'deadline-guard'
+          };
+        } else if (q.includes('summary') || q.includes('risk') || q.includes('status')) {
+          const willMiss = applications.filter(a => a.riskStatus === 'Will miss at current pace');
+          const tight = applications.filter(a => a.riskStatus === 'Tight');
+          const onTrack = applications.filter(a => a.riskStatus === 'On track');
+
+          responseText = `**SAMAY Live Institutional Risk Summary** (Clock: ${simulatedDate}):\n\n- **Total Applications**: ${applications.length}\n- **On Track**: ${onTrack.length} (${Math.round((onTrack.length / applications.length) * 100)}%)\n- **Tight**: ${tight.length} (Requires close monitoring)\n- **Will Miss at Current Pace**: ${willMiss.length} (${willMiss.map(a => a.institutionName).join(', ')})\n\nStatutory Cutoff: **${calendarConfig.approvalCutoffDate}**\nSHA-256 Ledger: **${auditLog.length} chained blocks intact**.`;
+          refs = ['SAMAY Real-Time Database', 'APH Ruleset 2026.v1.4', 'SHA-256 Block Chain'];
+        } else {
+          responseText = `Based on current live records and the AICTE Approval Process Handbook (2024-27):\n\n- Active applications in workflow: **${applications.length}**\n- High-risk institutions flagged: **${applications.filter(a => a.riskStatus === 'Will miss at current pace').length}**\n- Statutory Supreme Court cutoff: **${calendarConfig.approvalCutoffDate}**\n- Audit Ledger status: **${auditLog.length} chained blocks** with verified cryptographic integrity.\n\nYou can ask any question from our 5,000+ question bank on AICTE norms, scrutiny, EVC inspections, land leases, or faculty cadre ratios.`;
+          refs = ['AICTE Approval Process Handbook 2024-27', 'Cryptographic Audit Trail', '5,000+ Predefined Questions Bank'];
+        }
       }
 
       const copilotMsg: CopilotMessage = {
@@ -185,9 +190,9 @@ export default function OfficerCopilot({
       {
         id: `msg-welcome-${timestamp}`,
         sender: 'copilot',
-        text: 'Chat history cleared. How may I assist you with regulatory advisory, APH rules, or audit intelligence?',
+        text: 'Chat history cleared. How may I assist you with regulatory advisory, APH rules, or audit intelligence from our 5,000+ question knowledge base?',
         timestamp: 'Just now',
-        references: ['AICTE Approval Process Handbook 2024-27']
+        references: ['AICTE Approval Process Handbook 2024-27', '5,000+ Predefined Questions Bank']
       }
     ]);
   }, []);
@@ -256,7 +261,7 @@ export default function OfficerCopilot({
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                 </div>
                 <p className="text-[10px] text-stone-500 dark:text-[#B8C5E0] font-medium">
-                  RAG over APH 2024-27 & SHA-256 Ledger · Multilingual
+                  {totalQuestionsCount.toLocaleString()} APH Questions · RAG Ledger · Multilingual
                 </p>
               </div>
             </div>
@@ -265,14 +270,14 @@ export default function OfficerCopilot({
             <div className="flex items-center space-x-1">
               <button
                 onClick={handleClearChat}
-                className="p-1.5 text-stone-400 hover:text-stone-800 rounded-full hover:bg-stone-100 transition-colors"
+                className="p-1.5 text-stone-400 hover:text-stone-800 rounded-full hover:bg-stone-100 transition-colors cursor-pointer"
                 title="Reset conversation"
               >
                 <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.75} />
               </button>
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="p-1.5 text-stone-400 hover:text-stone-800 rounded-full hover:bg-stone-100 transition-colors hidden sm:block"
+                className="p-1.5 text-stone-400 hover:text-stone-800 rounded-full hover:bg-stone-100 transition-colors hidden sm:block cursor-pointer"
                 title={isExpanded ? 'Restore compact size' : 'Expand window'}
               >
                 {isExpanded ? (
@@ -283,7 +288,7 @@ export default function OfficerCopilot({
               </button>
               <button
                 onClick={onClose}
-                className="p-1.5 text-stone-400 hover:text-stone-800 rounded-full hover:bg-stone-100 transition-colors"
+                className="p-1.5 text-stone-400 hover:text-stone-800 rounded-full hover:bg-stone-100 transition-colors cursor-pointer"
                 title="Minimize back to floating pill"
               >
                 <ChevronDown className="w-4 h-4" strokeWidth={2} />
@@ -335,7 +340,7 @@ export default function OfficerCopilot({
                             onSelectApplication(m.actionLink.appId);
                           }
                         }}
-                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 dark:bg-[#16274E] dark:hover:bg-[#1E356A] text-amber-950 dark:text-[#FFB366] border border-amber-200/80 dark:border-[#FF9933]/50 text-[11px] font-bold shadow-2xs transition-colors"
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 dark:bg-[#16274E] dark:hover:bg-[#1E356A] text-amber-950 dark:text-[#FFB366] border border-amber-200/80 dark:border-[#FF9933]/50 text-[11px] font-bold shadow-2xs transition-colors cursor-pointer"
                       >
                         <span>{m.actionLink.label}</span>
                         <ExternalLink className="w-3 h-3 text-amber-700 dark:text-[#FF9933]" strokeWidth={2} />
@@ -367,23 +372,43 @@ export default function OfficerCopilot({
                 <span className="w-1.5 h-1.5 rounded-full bg-[#FF9933] animate-bounce" />
                 <span className="w-1.5 h-1.5 rounded-full bg-[#FF9933] animate-bounce [animation-delay:0.2s]" />
                 <span className="w-1.5 h-1.5 rounded-full bg-[#FF9933] animate-bounce [animation-delay:0.4s]" />
-                <span className="text-[10px] ml-1 font-medium">Consulting APH Clauses & Audit Chain...</span>
+                <span className="text-[10px] ml-1 font-medium">Consulting APH Clauses & 5,000 Questions Bank...</span>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Prompts Carousel */}
-          <div className="p-2.5 bg-white dark:bg-[#0B152C] border-t border-stone-200 dark:border-white/[0.08] overflow-x-auto flex gap-1.5 no-scrollbar">
-            {quickPrompts.map((p, idx) => (
+          {/* Quick Prompts Carousel & Dynamic Question Rotator */}
+          <div className="px-3 py-2 bg-white dark:bg-[#0B152C] border-t border-stone-200 dark:border-white/[0.08] flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-[10px] text-stone-500 dark:text-[#B8C5E0] font-semibold px-0.5">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
+                <span className="truncate">Suggested Inquiries (From {totalQuestionsCount.toLocaleString()} AICTE Q-Bank)</span>
+              </div>
               <button
-                key={idx}
-                onClick={() => handleSend(p.query)}
-                className="text-[10px] font-semibold text-stone-700 dark:text-stone-200 bg-stone-50 dark:bg-[#122144] hover:bg-[#FEFCE8] dark:hover:bg-[#1B3061] hover:text-[#0F241C] dark:hover:text-[#FFFFFF] hover:border-amber-300 dark:hover:border-[#FF9933] px-3 py-1 rounded-full whitespace-nowrap border border-stone-200 dark:border-white/[0.1] transition-colors shadow-2xs"
+                type="button"
+                onClick={cycleNewPrompts}
+                className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-[#FF9933] hover:underline cursor-pointer shrink-0 font-bold"
+                title="Shuffle and view next set of questions from the 5,000 question bank"
               >
-                {p.label}
+                <Shuffle className="w-2.5 h-2.5" />
+                <span>Shuffle</span>
               </button>
-            ))}
+            </div>
+
+            <div data-chatbot-prompts-container="true" className="overflow-x-auto flex gap-1.5 no-scrollbar py-0.5">
+              {currentPrompts.map((p) => (
+                <button
+                  key={p.id}
+                  data-chatbot-prompt="true"
+                  onClick={() => handleSend(p.query)}
+                  title={p.query}
+                  className="text-[10px] font-semibold text-stone-700 dark:text-stone-200 bg-stone-50 dark:bg-[#122144] hover:bg-[#FEFCE8] dark:hover:bg-[#1B3061] hover:text-[#0F241C] dark:hover:text-[#FFFFFF] hover:border-amber-300 dark:hover:border-[#FF9933] px-3 py-1 rounded-full whitespace-nowrap border border-stone-200 dark:border-white/[0.1] transition-colors shadow-2xs cursor-pointer shrink-0"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Input Form */}
@@ -396,7 +421,7 @@ export default function OfficerCopilot({
           >
             <input
               type="text"
-              placeholder="Ask a question about any college, deadline, or APH rule..."
+              placeholder="Ask any question from 5,000+ AICTE APH rules..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               className="flex-1 px-3.5 py-2.5 bg-stone-50 dark:bg-[#070D1E] border border-stone-200 dark:border-[#FF9933]/40 rounded-full text-xs text-[#0F241C] dark:text-[#FFFFFF] placeholder:text-stone-400 dark:placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#FF9933]/40 focus:border-[#FF9933] shadow-2xs transition-all"

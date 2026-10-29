@@ -145,6 +145,7 @@ const JWKS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 export function getJwtSecret(): string | null {
   if (process.env.SUPABASE_JWT_SECRET) return process.env.SUPABASE_JWT_SECRET;
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (process.env.DEV_JWT_SECRET) return process.env.DEV_JWT_SECRET;
   // Test execution detection (Node test runner or explicit test environment)
   if (
     process.env.NODE_ENV === 'test' ||
@@ -153,9 +154,9 @@ export function getJwtSecret(): string | null {
   ) {
     return TEST_JWT_SECRET;
   }
-  // Local development fallback
-  if (process.env.NODE_ENV === 'development') {
-    return process.env.DEV_JWT_SECRET || 'samay-dev-secret-local-development-only-not-for-prod';
+  // Local development or standalone demonstration server fallback
+  if (process.env.NODE_ENV === 'development' || !process.env.VERCEL) {
+    return TEST_JWT_SECRET;
   }
   return null;
 }
