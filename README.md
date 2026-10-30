@@ -139,19 +139,15 @@ npm test
 
 ---
 
-## 🖥️ Running the Application Locally
+For login into the website here are id password and roles -:
+ID - institute.demo@aicte-samay.gov.in
+Password - Institute#2026
+role - APPLICANT_USER
 
-```bash
-# Install dependencies
-npm install
+Id - ro.scrutiny@aicte-samay.gov.in
+Password - Officer#Review26
+role - SCRUTINY_OFFICER
 
-# Run automated tests
-npm test
-
-# Build for production
-npm run build
-
-# Start production server on port 3000
-npm run start -- -p 3000
-```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+id  - admin.regbureau@aicte-samay.gov.in
+Password. - SamayAdmin@2026
+Role - SUPER_ADMIN
